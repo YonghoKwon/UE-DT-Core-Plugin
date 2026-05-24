@@ -4,21 +4,29 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/DateTime.h"
-#include "Async/Async.h" // 비동기 처리를 위해 필수
+#include "Async/Async.h"
+#include "Misc/CoreDelegates.h"
 
 void UDxLogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
-	// 로그 테스트
-	DX_LOG(GetWorld(), TEXT("========================================="));
-	DX_LOG(GetWorld(), TEXT("   SHIPPING LOG STARTED - SYSTEM INIT    "));
-	DX_LOG(GetWorld(), TEXT("========================================="));
+	// Initialize 시점에 한 번만 계산해서 캐싱
+	CachedLogDirectory = GetLogDirectory();
 
-	// 게임 종료 시 호출됨 델리게이트 바인딩
+#if PLATFORM_LINUX
+	system(TCHAR_TO_UTF8(*FString::Printf(TEXT("mkdir -p \"%s\""), *CachedLogDirectory)));
+#else
+	IFileManager::Get().MakeDirectory(*CachedLogDirectory, true);
+#endif
+
+	WriteLog(TEXT("========================================="));
+	WriteLog(TEXT("   SHIPPING LOG STARTED - SYSTEM INIT    "));
+	WriteLog(FString::Printf(TEXT("   Log Directory: %s"), *CachedLogDirectory));
+	WriteLog(TEXT("========================================="));
+
 	FCoreDelegates::OnExit.AddUObject(this, &UDxLogSubsystem::OnGameExit);
 
-	// 게임 시작 시 7일 지난 로그 삭제 (백그라운드에서 실행)
 	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this]()
 	{
 		DeleteOldLogs(7);
@@ -27,20 +35,17 @@ void UDxLogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UDxLogSubsystem::Deinitialize()
 {
-	// 델리게이트 바인딩 해제
 	FCoreDelegates::OnExit.RemoveAll(this);
-
 	Super::Deinitialize();
 }
 
 void UDxLogSubsystem::OnGameExit()
 {
 	// 게임 종료 시 로그 남기기
-	DX_LOG(GetWorld(), TEXT("========================================="));
-	DX_LOG(GetWorld(), TEXT("   GAME EXIT - SYSTEM SHUTDOWN    "));
-	DX_LOG(GetWorld(), TEXT("========================================="));
+	WriteLog(TEXT("========================================="));
+	WriteLog(TEXT("   GAME EXIT - SYSTEM SHUTDOWN    "));
+	WriteLog(TEXT("========================================="));
 
-	// 남아있는 버퍼의 로그를 모두 파일에 쓰기
 	ProcessLogBuffer();
 }
 
@@ -66,7 +71,27 @@ void UDxLogSubsystem::WriteLog(const FString& LogContent, bool bPrintToScreen, F
 	FString TargetFileName = LogFileName;
 	if (TargetFileName.IsEmpty())
 	{
-		TargetFileName = FString::Printf(TEXT("DxLog_%s.log"), *Now.ToString(TEXT("%Y-%m-%d")));
+		FString BaseName = FString::Printf(TEXT("DxLog_%s.log"), *Now.ToString(TEXT("%Y-%m-%d")));
+		TargetFileName = BaseName + TEXT(".log");
+
+
+
+		constexpr int64 MaxLogSizeBytes = 50LL * 1024 * 1024;  // 50MB
+		constexpr int32 MaxRotationIndex = 20;
+
+		for (int32 SuffixIndex = 1; SuffixIndex <= MaxRotationIndex; ++SuffixIndex)
+		{
+			FString FullPath = CachedLogDirectory / TargetFileName;
+			int64 FileSize = IFileManager::Get().FileSize(*FullPath);
+
+			if (FileSize < 0 || FileSize < MaxLogSizeBytes)
+			{
+				break;
+			}
+
+			TargetFileName = FString::Printf(TEXT("%s_%d.log"), *BaseName, SuffixIndex);
+		}
+
 	}
 
 	// 3. [중요] 버퍼에 "순서대로" 추가 (Lock 사용)
@@ -95,15 +120,12 @@ void UDxLogSubsystem::DeleteOldLogs(int32 RetentionDays)
 	// 1. 로그 디렉토리 확인
 	if (!FileManager.DirectoryExists(*LogDir))
 	{
-		UE_LOG(LogBase, Warning, TEXT("[DxLog] Log Directory not found: %s"), *LogDir);
 		return;
 	}
 
 	// 2. 파일 목록 가져오기 (*.log)
 	TArray<FString> FoundFiles;
 	FileManager.FindFiles(FoundFiles, *(LogDir / TEXT("*.log")), true, false);
-
-	DX_LOG(GetWorld(), TEXT("[DxLog] Checking %d files for cleanup... (Retention: %d Days)"), FoundFiles.Num(), RetentionDays);
 
 	FDateTime Now = FDateTime::Now();
 	FTimespan RetentionSpan = FTimespan::FromDays(RetentionDays);
@@ -135,7 +157,6 @@ void UDxLogSubsystem::DeleteOldLogs(int32 RetentionDays)
 		if (!bValidDate)
 		{
 			FileDate = FileManager.GetTimeStamp(*FullPath);
-			UE_LOG(LogBase, Warning, TEXT("[DxLog] Name parsing failed for '%s'. Using File System Timestamp."), *FileName);
 		}
 
 		// 날짜 차이 계산
@@ -143,36 +164,35 @@ void UDxLogSubsystem::DeleteOldLogs(int32 RetentionDays)
 
 		if (Age > RetentionSpan)
 		{
-			if (FileManager.Delete(*FullPath))
-			{
-				UE_LOG(LogBase, Log, TEXT("[DxLog] [DELETED] %s (Log Date: %s, Age: %.1f Days)"),
-					*FileName, *FileDate.ToString(TEXT("%Y-%m-%d")), Age.GetTotalDays());
-			}
-			else
-			{
-				UE_LOG(LogBase, Error, TEXT("[DxLog] [FAIL] Could not delete %s"), *FileName);
-			}
-		}
-		else
-		{
-			// 너무 최신 파일임
-			// UE_LOG(LogBase, Log, TEXT("[DxLog] [KEEP] %s (Age: %.1f Days)"), *FileName, Age.GetTotalDays());
+			FileManager.Delete(*FullPath);
 		}
 	}
 }
 
 FString UDxLogSubsystem::GetLogDirectory()
 {
-	// 프로젝트 저장 폴더 아래 Logs/CustomLogs
+	// 캐싱된 값이 있으면 바로 반환
+	if (!CachedLogDirectory.IsEmpty())
+	{
+		return CachedLogDirectory;
+	}
+
+#if PLATFORM_WINDOWS
 	return FPaths::LaunchDir() / TEXT("Logs") / TEXT("CustomLogs");
-	// return FPaths::ProjectSavedDir() / TEXT("Logs") / TEXT("CustomLogs");
+#else
+	FString ExePath = FPlatformProcess::ExecutablePath();
+	FString ExeName = FPaths::GetBaseFilename(ExePath);
+	FString ProjectName;
+	if (!ExeName.Split(TEXT("-Linux-"), &ProjectName, nullptr))
+	{
+		ProjectName = ExeName;
+	}
+	return FPaths::LaunchDir() / ProjectName / TEXT("Logs") / TEXT("CustomLogs");
+#endif
 }
 
 void UDxLogSubsystem::ProcessLogBuffer()
 {
-	// 이 함수는 백그라운드 스레드에서 실행됩니다.
-	// 한 번 실행되면 버퍼가 빌 때까지 계속 반복합니다.
-
 	while (true)
 	{
 		TArray<TPair<FString, FString>> LocalBuffer;
@@ -196,19 +216,19 @@ void UDxLogSubsystem::ProcessLogBuffer()
 		IFileManager& FileManager = IFileManager::Get();
 		FString LogDir = GetLogDirectory();
 
+		if (!FileManager.DirectoryExists(*LogDir))
+		{
+			FileManager.MakeDirectory(*LogDir, true);
+		}
+
 		// 파일별로 내용을 묶어서 저장 (최적화)
 		// 같은 파일에 쓸 내용을 합쳐서 한 번에 I/O 하는 것이 좋음
 		for (const auto& LogEntry : LocalBuffer)
 		{
 			FString FullPath = LogDir / LogEntry.Key;
-
-			if (!FileManager.DirectoryExists(*LogDir))
-			{
-				FileManager.MakeDirectory(*LogDir, true);
-			}
-
-			FFileHelper::SaveStringToFile(LogEntry.Value, *FullPath, FFileHelper::EEncodingOptions::ForceUTF8,
-			                              &FileManager, FILEWRITE_Append);
+			FFileHelper::SaveStringToFile(LogEntry.Value, *FullPath,
+				FFileHelper::EEncodingOptions::ForceUTF8,
+			    &FileManager, FILEWRITE_Append);
 		}
 
 		// 루프 다시 시작 -> 그 사이 쌓인 로그가 있는지 확인하러 감

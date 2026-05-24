@@ -1,6 +1,9 @@
 ﻿#include "UI/DxWidget.h"
 
 #include "DTCore.h"
+#include "Components/Button.h"
+#include "Components/Image.h"
+#include "Components/TextBlock.h"
 #include "Core/DTCoreSettings.h"
 #include "Player/DxPlayerControllerBase.h"
 #include "Core/DxWidgetSubsystem.h"
@@ -49,6 +52,15 @@ void UDxWidget::NativePreConstruct()
 void UDxWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
+
+	if (Btn_Close)
+	{
+		Btn_Close->OnClicked.AddDynamic(this, &UDxWidget::OnCloseClicked);
+	}
+	if (Btn_Retry)
+	{
+		Btn_Retry->OnClicked.AddDynamic(this, &UDxWidget::OnRetryClicked);
+	}
 }
 
 void UDxWidget::NativeDestruct()
@@ -60,6 +72,22 @@ void UDxWidget::NativeDestruct()
 	UnbindFromPlayerController();
 
 	Super::NativeDestruct();
+}
+
+FReply UDxWidget::NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent)
+{
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	{
+		if (UGameInstance* GI = GetGameInstance())
+		{
+			if (UDxWidgetSubsystem* WidgetSubsystem = GI->GetSubsystem<UDxWidgetSubsystem>())
+			{
+				WidgetSubsystem->BringToFront(this);
+			}
+		}
+		return FReply::Unhandled();
+	}
+	return Super::NativeOnPreviewMouseButtonDown(InGeometry, InMouseEvent);
 }
 
 void UDxWidget::OpenWidgetAddLogic_Implementation()
@@ -75,6 +103,7 @@ void UDxWidget::CloseWidget()
 		if (UDxWidgetSubsystem* WidgetSubsystem = GI->GetSubsystem<UDxWidgetSubsystem>())
 		{
 			WidgetSubsystem->CloseWidget(this);
+			CloseWidgetAddLogic_Implementation();
 		}
 		else
 		{
@@ -89,6 +118,14 @@ void UDxWidget::CloseWidget()
 	}
 }
 
+void UDxWidget::CloseWidgetAddLogic_Implementation()
+{
+}
+
+void UDxWidget::RetryWidget_Implementation()
+{
+}
+
 UDxWidget* UDxWidget::OpenChildWidget(EDxWidgetFlag InChildFlag)
 {
 	if (UGameInstance* GI = GetGameInstance())
@@ -99,6 +136,17 @@ UDxWidget* UDxWidget::OpenChildWidget(EDxWidgetFlag InChildFlag)
 		}
 	}
 	return nullptr;
+}
+
+void UDxWidget::CloseChildWidget(EDxWidgetFlag InChildFlag)
+{
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UDxWidgetSubsystem* WidgetSubsystem = GI->GetSubsystem<UDxWidgetSubsystem>())
+		{
+			return WidgetSubsystem->ClosedWidgetFromWidget(this, InChildFlag);
+		}
+	}
 }
 
 void UDxWidget::SetParentWidget(UDxWidget* InParentWidget)
@@ -156,27 +204,18 @@ void UDxWidget::ApplyTheme_Implementation()
 
 	const FDxContainerStyle& Style = ThemeData->GetContainerStyle(CurrentStyleType);
 
-	// TODO: 기본적인 요소들에 대해서는 공통 클래스에 처리 되도록 해야 하지 않을까?
-	// if (MainBackgroundBorder)
-	// {
-	// 	MainBackgroundBorder->SetBrushColor(ContainerStyle.BodyBackground);
-	// }
-	//
-	// if (TitleBackgroundBorder)
-	// {
-	// 	TitleBackgroundBorder->SetBrushColor(ContainerStyle.TitleBackground);
-	// }
-	//
-	// if (TitleText)
-	// {
-	// 	// 텍스트는 FSlateColor로 감싸서 넣어주어야 합니다.
-	// 	TitleText->SetColorAndOpacity(FSlateColor(ContainerStyle.TitleTextColor));
-	// }
-	//
-	// if (SubTitleText)
-	// {
-	// 	SubTitleText->SetColorAndOpacity(FSlateColor(ContainerStyle.SubTitleTextColor));
-	// }
+	if (Img_TitleBg)
+	{
+		Img_TitleBg->SetColorAndOpacity(Style.TitleBackground);
+	}
+	if (Img_BodyBg)
+	{
+		Img_BodyBg->SetColorAndOpacity(Style.BodyBackground);
+	}
+	if (Txt_Title)
+	{
+		Txt_Title->SetColorAndOpacity(Style.TitleTextColor);
+	}
 }
 
 void UDxWidget::BindToPlayerController()
@@ -205,6 +244,16 @@ void UDxWidget::HandlePawnChanged(APawn* NewPawn)
 
 	// 자식 클래스에서 추가 처리 가능하도록 가상 함수 호출
 	OnPlayerChanged(NewPlayer);
+}
+
+void UDxWidget::OnCloseClicked()
+{
+	CloseWidget();
+}
+
+void UDxWidget::OnRetryClicked()
+{
+	RetryWidget();
 }
 
 void UDxWidget::OnPlayerChanged(ADxPlayerBase* NewPlayer)

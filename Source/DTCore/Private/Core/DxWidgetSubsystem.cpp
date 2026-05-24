@@ -7,6 +7,7 @@
 #include "InteractableActor/InteractableActor.h"
 #include "Manager/DxLevelStruct.h"
 #include "UI/DxWidget.h"
+#include "UI/DxWidgetConfigData.h"
 
 UDxWidgetSubsystem::UDxWidgetSubsystem()
 {
@@ -80,11 +81,21 @@ UDxWidget* UDxWidgetSubsystem::OpenWidget(AInteractableActor* InteractableActor)
 	if (!Config) return nullptr;
 
 	// Config 찾기
-	FWidgetInfo* WidgetInfoPtr = Config->WidgetMap.Find(InteractableActor->WidgetFlag);
-	if (!WidgetInfoPtr || !WidgetInfoPtr->WidgetClass) return nullptr;
+	FWidgetInfoList* WidgetInfoList = Config->WidgetMap.Find(InteractableActor->WidgetFlag);
+	if (!WidgetInfoList || !WidgetInfoList->Widgets.Num() == 0) return nullptr;
 
-	// Actor 기반 위젯은 ParentWidget이 없으므로 nullptr 전달
-	return CreateWidgetInternal(WidgetInfoPtr->WidgetClass, WidgetInfoPtr->Position, InteractableActor, nullptr, InteractableActor->WidgetFlag);
+	UDxWidget* FirstWidget = nullptr;
+	for (const FWidgetInfo& Info : WidgetInfoList->Widgets)
+	{
+		if (!Info.WidgetClass) continue;
+		UDxWidget* Created = CreateWidgetInternal(Info.WidgetClass, Info.Position, InteractableActor, nullptr, InteractableActor->WidgetFlag);
+		if (!FirstWidget && Created)
+		{
+			FirstWidget = Created;
+		}
+	}
+
+	return FirstWidget;
 }
 
 UDxWidget* UDxWidgetSubsystem::OpenWidgetFromWidget(UDxWidget* ParentDxWidget, EDxWidgetFlag TargetFlag)
@@ -95,11 +106,21 @@ UDxWidget* UDxWidgetSubsystem::OpenWidgetFromWidget(UDxWidget* ParentDxWidget, E
 	UDxWidgetConfigData* Config = ParentDxWidget->WidgetConfig;
 	if (!Config) return nullptr;
 
-	FWidgetInfo* WidgetInfoPtr = Config->WidgetMap.Find(TargetFlag);
-	if (!WidgetInfoPtr || !WidgetInfoPtr->WidgetClass) return nullptr;
+	FWidgetInfoList* WidgetInfoList = Config->WidgetMap.Find(TargetFlag);
+	if (!WidgetInfoList || !WidgetInfoList->Widgets.Num() == 0) return nullptr;
 
-	// 위젯 기반 위젯 호출 (Actor는 부모 위젯의 Actor를 승계)
-	return CreateWidgetInternal(WidgetInfoPtr->WidgetClass, WidgetInfoPtr->Position, ParentDxWidget->MyActor, ParentDxWidget, TargetFlag);
+	UDxWidget* FirstWidget = nullptr;
+	for (const FWidgetInfo& Info : WidgetInfoList->Widgets)
+	{
+		if (!Info.WidgetClass) continue;
+		UDxWidget* Created = CreateWidgetInternal(Info.WidgetClass, Info.Position, ParentDxWidget->MyActor, ParentDxWidget, TargetFlag);
+		if (!FirstWidget && Created)
+		{
+			FirstWidget = Created;
+		}
+	}
+
+	return FirstWidget;
 }
 
 void UDxWidgetSubsystem::CloseWidget(UDxWidget* CloseWidget)
@@ -136,6 +157,25 @@ void UDxWidgetSubsystem::CloseWidget(UDxWidget* CloseWidget)
 	UE_LOG(LogTemp, Log, TEXT("CloseWidget: Widget '%s' closed successfully"), *CloseWidget->GetName());
 }
 
+void UDxWidgetSubsystem::ClosedWidgetFromWidget(UDxWidget* ParentDxWidget, EDxWidgetFlag TargetFlag)
+{
+	if (!ParentDxWidget) return;
+
+	TArray<UDxWidget*> WidgetsToClose;
+	for (UDxWidget* Child : ParentDxWidget->ChildWidgets)
+	{
+		if (IsValid(Child) && Child->WidgetFlag == TargetFlag)
+		{
+			WidgetsToClose.Add(Child);
+		}
+	}
+
+	for (UDxWidget* Child : WidgetsToClose)
+	{
+		CloseWidget(Child);
+	}
+}
+
 TArray<TObjectPtr<UDxWidget>> UDxWidgetSubsystem::GetOpenWidgets()
 {
 	return this->OpenWidgets;
@@ -145,18 +185,26 @@ UDxWidget* UDxWidgetSubsystem::CreateWidgetInternal(TSubclassOf<UDxWidget> Widge
 	AInteractableActor* OwnerActor, UDxWidget* ParentWidget, EDxWidgetFlag Flag)
 {
 	// 1. 중복 체크
-	for (UDxWidget* ExistingWidget : OpenWidgets)
+	if (Flag != EDxWidgetFlag::CctvWidget)
 	{
-		if (ExistingWidget &&
-			ExistingWidget->GetClass() == WidgetClass &&
-			ExistingWidget->MyActor == OwnerActor &&
-			ExistingWidget->WidgetFlag == Flag)
+		for (UDxWidget* ExistingWidget : OpenWidgets)
 		{
-			BringToFront(ExistingWidget);
-			UE_LOG(LogBase, Log, TEXT("CreateWidgetInternal: Widget already open."));
-			return ExistingWidget;
+			if (ExistingWidget &&
+				ExistingWidget->GetClass() == WidgetClass &&
+				ExistingWidget->MyActor == OwnerActor &&
+				ExistingWidget->WidgetFlag == Flag)
+			{
+				const bool bSameSpawn = ExistingWidget->SpawnPosition.Equals(Position, 0.5f);
+				if (bSameSpawn)
+				{
+					BringToFront(ExistingWidget);
+					DX_LOG(GetWorld(), TEXT("CreateWidgetInternal: Widget already open."));
+					return ExistingWidget;
+				}
+			}
 		}
 	}
+
 
 	// 2. 패널 찾기
 	UPanelWidget* Panel = GetAddWidgetPanel();
@@ -171,22 +219,30 @@ UDxWidget* UDxWidgetSubsystem::CreateWidgetInternal(TSubclassOf<UDxWidget> Widge
 	if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(PanelSlot))
 	{
 		CanvasSlot->SetPosition(Position);
-		// 기본 ZOrder + Parent가 있다면 Parent보다 높게
-		int32 BaseZOrder = 1;
-		if (ParentWidget)
+	}
+
+	// 5. 데이터 설정
+	OpenWidgets.Add(NewWidget);
+
+	BringToFront(NewWidget);
+
+	if (ParentWidget)
+	{
+		if (UCanvasPanelSlot* ParentSlot = Cast<UCanvasPanelSlot>(ParentWidget->Slot))
 		{
-			if (UCanvasPanelSlot* ParentSlot = Cast<UCanvasPanelSlot>(ParentWidget->Slot))
+			if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(ParentWidget->Slot))
 			{
-				BaseZOrder = ParentSlot->GetZOrder() + 1;
+				int32 NewZOrder = FMath::Max(CanvasSlot->GetZOrder(), ParentSlot->GetZOrder() + 1);
+				CanvasSlot->SetZOrder(NewZOrder);
 			}
 		}
-		CanvasSlot->SetZOrder(BaseZOrder);
 	}
 
 	// 5. 데이터 설정
 	OpenWidgets.Add(NewWidget);
 	NewWidget->MyActor = OwnerActor;
 	NewWidget->WidgetFlag = Flag;
+	NewWidget->SpawnPosition = Position;
 
 	// 계층 연결
 	if (ParentWidget)

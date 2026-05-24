@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "UI/DxWidgetInfo.h"
 #include "DxWidgetSubsystem.generated.h"
 
 enum class EDxWidgetFlag : uint8;
@@ -9,18 +10,6 @@ class AInteractableActor;
 class UDxWidget;
 enum class EDxViewMode : uint8;
 
-// 위젯 정보를 담는 구조체
-USTRUCT(BlueprintType)
-struct FWidgetInfo
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget")
-	TSubclassOf<UDxWidget> WidgetClass;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Widget")
-	FVector2D Position = FVector2D(1000.0f, 500.0f);
-};
 UCLASS()
 class DTCORE_API UDxWidgetSubsystem : public UGameInstanceSubsystem, public FTickableGameObject
 {
@@ -43,23 +32,30 @@ public:
 	// 위젯 생성 및 열기
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	UDxWidget* OpenWidget(AInteractableActor* InteractableActor);
-	// 위젯 생성 및 열기
+	// 자식 위젯 생성 및 열기
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	UDxWidget* OpenWidgetFromWidget(UDxWidget* DxWidget, EDxWidgetFlag TargetFlag);
 	// 위젯 닫기
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void CloseWidget(UDxWidget* CloseWidget);
 
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ClosedWidgetFromWidget(UDxWidget* DxWidget, EDxWidgetFlag TargetFlag);
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void BringToFront(UDxWidget* Widget);
+
 	TArray<TObjectPtr<UDxWidget>> GetOpenWidgets();
-private:
+
+	UDxWidget* GetMainWidget() const { return MainWidgetInstance; }
+
 	// MainWidget에서 canvasPanel을 찾는 헬퍼 함수
 	class UPanelWidget* GetAddWidgetPanel() const;
 
+private:
 	// 위젯 생성, 위치 설정, 리스트 추가 등 공통 로직을 처리
 	UDxWidget* CreateWidgetInternal(TSubclassOf<UDxWidget> WidgetClass, const FVector2D& Position, AInteractableActor* OwnerActor, UDxWidget* ParentWidget, EDxWidgetFlag Flag);
 
-	// Z-Order 재정렬
-	void BringToFront(UDxWidget* Widget);
 protected:
 
 	// Variable

@@ -4,11 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "DxWidgetDataType.h"
-#include "Core/DxWidgetSubsystem.h"
+#include "UI/DxWidgetInfo.h"
 #include "Engine/DataAsset.h"
-#include "m7at10_dt/M7AT10/Player/DxPlayerTest.h"
 #include "DxWidgetConfigData.generated.h"
 
+enum class EPlayerViewType : uint8;
 /**
  * 
  */
@@ -19,7 +19,7 @@ class DTCORE_API UDxWidgetConfigData : public UDataAsset
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Widget Config")
-	TMap<EDxWidgetFlag, FWidgetInfo> WidgetMap;
+	TMap<EDxWidgetFlag, FWidgetInfoList> WidgetMap;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Widget Config")
 	TMap<EPlayerViewType, EDxWidgetFlag> DefaultViewModeWidgetFlags;

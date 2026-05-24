@@ -160,6 +160,14 @@ TArray<UPrimitiveComponent*> AInteractableActor::GetActorAllMesh()
 	return meshes;
 }
 
+void AInteractableActor::RefreshCachedMeshes()
+{
+	CachedMeshes = GetActorAllMesh();
+
+	CurrentHighlightedMeshes.Empty();
+	LastHoveredComponent = nullptr;
+}
+
 void AInteractableActor::BindToPlayer()
 {
 	if (APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0))

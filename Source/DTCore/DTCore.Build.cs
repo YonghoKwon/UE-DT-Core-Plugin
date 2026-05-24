@@ -35,8 +35,7 @@ public class DTCore : ModuleRules
 				"EnhancedInput",
 				"UMG",
 				"Slate",
-				"SlateCore",
-				"m7at10_dt"
+				"SlateCore"
 			}
 			);
 			

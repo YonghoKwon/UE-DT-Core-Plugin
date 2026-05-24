@@ -69,6 +69,9 @@ struct FDxContainerStyle
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	FLinearColor ValueTextColor = FLinearColor::Black;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FLinearColor SeparateImageColor = FLinearColor(0.024158f, 0.090842f, 0.212231f, 1.0f);
 };
 
 USTRUCT(BlueprintType)

@@ -1,15 +1,23 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "DxWidgetConfigData.h"
-#include "DxWidgetDataType.h"
 #include "DxWidgetThemeData.h"
 #include "Blueprint/UserWidget.h"
+#include "InteractableActor/InteractableActor.h"
 #include "Player/DxPlayerBase.h"
 #include "DxWidget.generated.h"
 
 class UDxWidgetThemeData;
-class AInteractableActor;
+class UImage;
+class UTextBlock;
+class UButton;
+
+UENUM(BlueprintType)
+enum class EPlayerViewType : uint8
+{
+	TopView UMETA(DisplayName = "TopView"),
+	FreeView UMETA(DisplayName = "FreeView"),
+};
 /**
  * 
  */
@@ -24,15 +32,27 @@ public:
 	virtual void NativePreConstruct() override;
 	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
+	virtual FReply NativeOnPreviewMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DxWidget")
 	void OpenWidgetAddLogic();
 
 	UFUNCTION(BlueprintCallable, Category = "DxWidget")
 	void CloseWidget();
+	void CloseWidgetAddLogic_Implementation();
 
-	UFUNCTION(BlueprintCallable, Category = "DxWidget")
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DxWidget")
+	void CloseWidgetAddLogic();
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DxWidget")
+	void RetryWidget();
+	virtual void RetryWidget_Implementation();
+
+
+	UFUNCTION(BlueprintCallable, Category = "DxWidget|ChildWidget")
 	UDxWidget* OpenChildWidget(EDxWidgetFlag InChildFlag);
+	UFUNCTION(BlueprintCallable, Category = "DxWidget|ChildWidget")
+	void CloseChildWidget(EDxWidgetFlag InChildFlag);
 
 	UFUNCTION(BlueprintCallable, Category = "DxWidget")
 	void SetParentWidget(UDxWidget* InParentWidget);
@@ -66,6 +86,10 @@ private:
 	UFUNCTION()
 	void HandlePawnChanged(APawn* NewPawn);
 
+	UFUNCTION()
+	void OnCloseClicked();
+	UFUNCTION()
+	void OnRetryClicked();
 	// Variable
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "DxWidget")
@@ -75,6 +99,18 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Actor")
 	AInteractableActor* MyActor;
+
+	UPROPERTY(meta = (BindWidgetOptional), VisibleAnywhere, BlueprintReadOnly, Category = "DxWidget|Theme")
+	TObjectPtr<UImage> Img_TitleBg;
+	UPROPERTY(meta = (BindWidgetOptional), VisibleAnywhere, BlueprintReadOnly, Category = "DxWidget|Theme")
+	TObjectPtr<UImage> Img_BodyBg;
+	UPROPERTY(meta = (BindWidgetOptional), VisibleAnywhere, BlueprintReadOnly, Category = "DxWidget|Theme")
+	TObjectPtr<UTextBlock> Txt_Title;
+
+	UPROPERTY(meta = (BindWidgetOptional), VisibleAnywhere, BlueprintReadOnly, Category = "DxWidget")
+	TObjectPtr<UButton> Btn_Close;
+	UPROPERTY(meta = (BindWidgetOptional), VisibleAnywhere, BlueprintReadOnly, Category = "DxWidget")
+	TObjectPtr<UButton> Btn_Retry;
 
 	// 직접 맵을 정의하는 대신 에셋을 참조
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DxWidget")
@@ -95,6 +131,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DxWidget|Theme")
 	EDxWidgetStyleType CurrentStyleType = EDxWidgetStyleType::Standard;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DxWidget|Runtime")
+	FVector2D SpawnPosition = FVector2D::ZeroVector;
 protected:
 	UPROPERTY()
 	FTimerHandle ContinuousTimerHandle;

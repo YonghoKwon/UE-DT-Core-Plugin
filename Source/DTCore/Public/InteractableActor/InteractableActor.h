@@ -38,6 +38,9 @@ public:
 	UFUNCTION(BlueprintPure, BlueprintCallable, Category = "InteractableActor")
 	TArray<UPrimitiveComponent*> GetActorAllMesh();
 
+	UFUNCTION(BlueprintCallable, Category = "InteractableActor")
+	void RefreshCachedMeshes();
+
 protected:
 	// Player 바인딩 관련 함수
 	void BindToPlayer();

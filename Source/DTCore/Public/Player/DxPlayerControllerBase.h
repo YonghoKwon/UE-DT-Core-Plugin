@@ -6,6 +6,8 @@
 #include "InputActionValue.h"
 #include "DxPlayerControllerBase.generated.h"
 
+DECLARE_MULTICAST_DELEGATE(FOnTestPimsKeyPressed);
+
 class ADxPlayerBase;
 
 UCLASS()
@@ -41,6 +43,7 @@ protected:
 	void Look(const FInputActionValue& Value);
 	void MoveUpDown(const FInputActionValue& Value);
 	void ClickRightMouseButton(const FInputActionValue& Value);
+	virtual void HandleTestPimsKeyPressed(const FInputActionValue& Value);
 
 	// 마우스 호버 감지
 	void CheckMouseHover();
@@ -61,6 +64,8 @@ public:
 	UInputAction* LeftMouseButtonAction;
 	UPROPERTY(EditAnywhere, Category = "Input")
 	UInputAction* RightMouseButtonAction;
+	UPROPERTY(EditAnywhere, Category = "Input")
+	UInputAction* TestPimsKeyAction;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FVector2D UIMoveInput;
@@ -76,6 +81,8 @@ public:
 	int32 ControlSpeedStep = 100;
 	UPROPERTY(BlueprintReadWrite)
 	bool PossibleClick = true;
+
+	FOnTestPimsKeyPressed OnTestPimsKeyPressed;
 private:
 	UPROPERTY()
 	bool bIsClickRightMouseButton;

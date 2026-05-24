@@ -12,4 +12,5 @@ enum class EDxWidgetFlag : uint8
 	CraneTopView,
 
 	UpdateWidget,
+	CctvWidget,
 };

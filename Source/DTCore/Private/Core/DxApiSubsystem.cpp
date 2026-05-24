@@ -73,7 +73,7 @@ void UDxApiSubsystem::DxRequestApi(const FName& RowName, FDxApiCallback Callback
 	// DT_Api 데이터테이블이 유효한지 체크
 	if (!DT_Api)
 	{
-		UE_LOG(LogBase, Error, TEXT("DxRequestApi: DT_Api is not set."));
+		DX_LOG(GetWorld(), TEXT("DxRequestApi: DT_Api is not set."));
 		Callback.ExecuteIfBound(false, 0, TEXT("DT_Api is not set"));
 		return;
 	}
@@ -82,7 +82,7 @@ void UDxApiSubsystem::DxRequestApi(const FName& RowName, FDxApiCallback Callback
 	FApiStruct* ApiData = DT_Api->FindRow<FApiStruct>(RowName, TEXT("DxRequestApi"));
 	if (!ApiData)
 	{
-		UE_LOG(LogBase, Error, TEXT("DxRequestApi: Row '%s' not found in DT_Api."), *RowName.ToString());
+		DX_LOG(GetWorld(), TEXT("DxRequestApi: Row '%s' not found in DT_Api."), *RowName.ToString());
 		Callback.ExecuteIfBound(false, 0, FString::Printf(TEXT("Row '%s' not found"), *RowName.ToString()));
 		return;
 	}
@@ -108,7 +108,7 @@ void UDxApiSubsystem::DxRequestApiWithParameter(const FName& RowName, FDxApiCall
 	// DT_Api 데이터테이블이 유효한지 체크
 	if (!DT_Api)
 	{
-		UE_LOG(LogBase, Error, TEXT("DxRequestApiWithParameter: DT_Api is not set."));
+		DX_LOG(GetWorld(), TEXT("DxRequestApiWithParameter: DT_Api is not set."));
 		Callback.ExecuteIfBound(false, 0, TEXT("DT_Api is not set"));
 		return;
 	}
@@ -117,7 +117,7 @@ void UDxApiSubsystem::DxRequestApiWithParameter(const FName& RowName, FDxApiCall
 	FApiStruct* ApiData = DT_Api->FindRow<FApiStruct>(RowName, TEXT("DxRequestApiWithParameter"));
 	if (!ApiData)
 	{
-		UE_LOG(LogBase, Error, TEXT("DxRequestApiWithParameter: Row '%s' not found in DT_Api."), *RowName.ToString());
+		DX_LOG(GetWorld(), TEXT("DxRequestApiWithParameter: Row '%s' not found in DT_Api."), *RowName.ToString());
 		Callback.ExecuteIfBound(false, 0, FString::Printf(TEXT("Row '%s' not found"), *RowName.ToString()));
 		return;
 	}
@@ -146,7 +146,7 @@ void UDxApiSubsystem::DxRequestApiWithParameter(const FName& RowName, FDxApiCall
 	// Body 설정
 	// FString ContentString = ApiData->Body;
 
-	UE_LOG(LogBase, Log, TEXT("DxRequestApiWithParameter: Calling API - %s %s"), *MethodType, *FullUrl);
+	// UE_LOG(LogBase, Log, TEXT("DxRequestApiWithParameter: Calling API - %s %s"), *MethodType, *FullUrl);
 
 	// HTTP 요청 실행
 	DxHttpCall(FullUrl, MethodType, TEXT(""), DefaultHeaders, Callback);
@@ -172,7 +172,7 @@ void UDxApiSubsystem::InternalOnResponseReceived(FHttpRequestPtr Request, FHttpR
 		// HTTP 코드가 200번대(성공)인지 확인
 		if (EHttpResponseCodes::IsOk(ResponseCode))
 		{
-			UE_LOG(LogBase, Log, TEXT("Response [%d]: %s"), ResponseCode, *Content);
+			// UE_LOG(LogBase, Log, TEXT("Response [%d]: %s"), ResponseCode, *Content);
 			bIsOk = true;
 
 			// DxDataSubsystem에 데이터 저장
@@ -188,12 +188,14 @@ void UDxApiSubsystem::InternalOnResponseReceived(FHttpRequestPtr Request, FHttpR
 		}
 		else
 		{
-			UE_LOG(LogBase, Warning, TEXT("Response Error [%d]: %s"), ResponseCode, *Content);
+			// UE_LOG(LogBase, Warning, TEXT("Response Error [%d]: %s"), ResponseCode, *Content);
+			DX_LOG(GetWorld(), TEXT("Response Error [%d]: %s"), ResponseCode, *Content);
 		}
 	}
 	else
 	{
-		UE_LOG(LogBase, Error, TEXT("Connection Failed or No Response"));
+		// UE_LOG(LogBase, Error, TEXT("Connection Failed or No Response"));
+		DX_LOG(GetWorld(), TEXT("Connection Failed or No Response"));
 	}
 
 	Callback.ExecuteIfBound(bIsOk, ResponseCode, Content);
@@ -201,17 +203,57 @@ void UDxApiSubsystem::InternalOnResponseReceived(FHttpRequestPtr Request, FHttpR
 
 FString UDxApiSubsystem::GetServerUrl(EApiType ApiType)
 {
+	// ApiType별 키 결정
+	FString IniKey;
 	switch (ApiType)
 	{
-	case EApiType::Local:
-		return TEXT("http://localhost:8090");
-	case EApiType::Test:
-		return TEXT("http://172.28.79.32:8090"); // 개발계 (dt3test)
-	case EApiType::Prod:
-		return TEXT("");
-	default:
-		return TEXT("http://localhost:8090");
+	case EApiType::Local: IniKey = TEXT("LocalApiUrl"); break;
+	case EApiType::Test:  IniKey = TEXT("TestApiUrl");  break;
+	case EApiType::Prod:  IniKey = TEXT("ProdApiUrl");  break;
+	default:              IniKey = TEXT("BaseApiUrl");  break;
 	}
+
+	// 1. Game.ini에서 해당 키 읽기
+	FString GameIniPath = FPaths::ConvertRelativePathToFull(
+		FPaths::LaunchDir() / TEXT("m7at10_dt") / TEXT("Saved") / TEXT("Config")
+		/ FPlatformProperties::PlatformName()
+		/ TEXT("Game.ini")
+	);
+
+	FString IniContent;
+	if (FFileHelper::LoadFileToString(IniContent, *GameIniPath))
+	{
+		TArray<FString> Lines;
+		IniContent.ParseIntoArray(Lines, TEXT("\n"), true);
+		for (const FString& Line : Lines)
+		{
+			FString TrimmedLine = Line.TrimStartAndEnd();
+			TrimmedLine.RemoveFromEnd(TEXT("\r"));
+			if (TrimmedLine.StartsWith(IniKey + TEXT("=")))
+			{
+				FString IniUrl = TrimmedLine.Mid(IniKey.Len() + 1).TrimStartAndEnd();
+				if (!IniUrl.IsEmpty())
+				{
+					return IniUrl;
+				}
+			}
+		}
+	}
+
+	// 2. DTCoreSettings 풀백
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+	if (ensure(Settings))
+	{
+		switch (ApiType)
+		{
+		case EApiType::Local: return Settings->LocalApiUrl;
+		case EApiType::Test: return Settings->TestApiUrl;
+		case EApiType::Prod: return Settings->ProdApiUrl;
+		default: return Settings->BaseApiUrl;
+		}
+	}
+
+	return TEXT("http://localhost:8090");
 }
 FString UDxApiSubsystem::GetHttpStr(EApiMethod ApiMethod)
 {

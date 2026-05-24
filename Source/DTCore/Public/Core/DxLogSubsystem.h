@@ -34,6 +34,8 @@ protected:
 	// Variable
 public:
 private:
+	FString CachedLogDirectory;
+
 	// [NEW] 로그를 잠시 담아둘 버퍼
 	TArray<TPair<FString, FString>> LogBuffer; // <FileName, Content>
 	// [NEW] 버퍼 접근 시 충돌 방지용 뮤텍스

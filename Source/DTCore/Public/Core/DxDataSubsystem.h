@@ -5,7 +5,6 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "DxDataSubsystem.generated.h"
 
-class UCraneDataSyncComp;
 class UTransactionCodeMessage;
 class UApiMessage;
 /**

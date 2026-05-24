@@ -125,6 +125,16 @@ void ADxPlayerBase::Move(const FVector2D& MovementVector)
 
 	// 현재 위치에 더하기
 	AddActorWorldOffset(MoveDirection * ControlSpeed, true);
+
+	FVector CurrentLocation = GetActorLocation();
+
+	// 범위를 벗어났는지 확인 (0 ~ 72625)
+	if (CurrentLocation.Z < 0.0f || CurrentLocation.Z > 72625.0f)
+	{
+		// 강제로 범위 안으로 고정
+		CurrentLocation.Z = FMath::Clamp(CurrentLocation.Z, 0.0f, 72625.0f);
+		SetActorLocation(CurrentLocation);
+	}
 }
 // 상하 이동, 배속 적용
 void ADxPlayerBase::MoveUpDown(float Value)
@@ -133,10 +143,7 @@ void ADxPlayerBase::MoveUpDown(float Value)
 	FVector NewLocation = CurrentLocation + FVector(0.0f, 0.0f, Value * ControlSpeed);
 
 	// Z축 높이를 72625 이하로 제한
-	if (NewLocation.Z > 72625.0f)
-	{
-		NewLocation.Z = 72625.0f;
-	}
+	NewLocation.Z = FMath::Clamp(NewLocation.Z, 0.0f, 72625.0f);
 
 	SetActorLocation(NewLocation);
 }

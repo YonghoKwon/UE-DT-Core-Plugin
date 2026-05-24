@@ -26,24 +26,24 @@ void UDxProcessSubsystem::RegisterComponent(const FString& ComponentId, UActorCo
 {
 	if (ComponentId.IsEmpty() || !IsValid(InComponent))
 	{
-		UE_LOG(LogBase, Warning, TEXT("[DxProcessSubsystem] Invalid ComponentId or InComponent for registeration"));
+		DX_LOG(GetWorld(), TEXT("[DxProcessSubsystem] Invalid ComponentId or InComponent for registeration"));
 		return;
 	}
 
 	if (RegisteredComponents.Contains(ComponentId))
 	{
-		UE_LOG(LogBase, Warning, TEXT("[DxProcessSubsystem] ComponentId '%s' already registered. Overwriting."), *ComponentId);
+		DX_LOG(GetWorld(), TEXT("[DxProcessSubsystem] ComponentId '%s' already registered. Overwriting."), *ComponentId);
 	}
 
 	RegisteredComponents.Add(ComponentId, InComponent);
-	UE_LOG(LogBase, Log, TEXT("[DxProcessSubsystem] Registered Component for ComponentId: %s"), *ComponentId);
+	DX_LOG(GetWorld(), TEXT("[DxProcessSubsystem] Registered Component for ComponentId: %s"), *ComponentId);
 }
 
 void UDxProcessSubsystem::UnregisterComponent(const FString& ComponentId)
 {
 	if (RegisteredComponents.Remove(ComponentId) > 0)
 	{
-		UE_LOG(LogBase, Log, TEXT("[DxProcessSubsystem] Unregistered Component for ComponentId: %s"), *ComponentId);
+		DX_LOG(GetWorld(), TEXT("[DxProcessSubsystem] Unregistered Component for ComponentId: %s"), *ComponentId);
 	}
 }
 

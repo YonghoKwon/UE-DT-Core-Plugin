@@ -48,14 +48,15 @@ void UDxDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 						FString Key = FPaths::Combine(PascalResource, PascalAction);
 
 						ApiMessageMap.Add(Key, NewHandler);
-						UE_LOG(LogBase, Log, TEXT("Loaded Handler Key: %s"), *Key);
+						// UE_LOG(LogBase, Log, TEXT("Loaded Handler Key: %s"), *Key);
 					}
 				}
 			});
 	}
 	else
 	{
-		UE_LOG(LogBase, Warning, TEXT("ApiStructDataTable failed to load"));
+		// UE_LOG(LogBase, Warning, TEXT("ApiStructDataTable failed to load"));
+		DX_LOG(GetWorld(), TEXT("ApiStructDataTable failed to load"));
 	}
 
 	CachedHandlerApiMessageMap = MakeShared<TMap<FString, UApiMessage*>>();
@@ -79,14 +80,14 @@ void UDxDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 					if (NewTc && !NewTc->TransactionCode.IsEmpty())
 					{
 						TransactionCodeMessageMap.Add(NewTc->TransactionCode, NewTc);
-						UE_LOG(LogBase, Log, TEXT("Loaded TransactionCode: %s"), *NewTc->TransactionCode);
+						// UE_LOG(LogBase, Log, TEXT("Loaded TransactionCode: %s"), *NewTc->TransactionCode);
 					}
 				}
 			});
 	}
 	else
 	{
-		UE_LOG(LogBase, Warning, TEXT("TransactionCodeDataTable failed to load"));
+		DX_LOG(GetWorld(), TEXT("TransactionCodeDataTable failed to load"));
 	}
 
 	CachedHandlerTransactionCodeMessageMap = MakeShared<TMap<FString, UTransactionCodeMessage*>>();
@@ -329,15 +330,15 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 	}
 
     // 화면 디버깅
-    if (GEngine)
-    {
-        GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Green,
-            FString::Printf(TEXT("Total Processed: %d"), TotalProcessedCount.GetValue()));
-    }
+    // if (GEngine)
+    // {
+    //     GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Green,
+    //         FString::Printf(TEXT("Total Processed: %d"), TotalProcessedCount.GetValue()));
+    // }
 
 	const FString Timestamp = FDateTime::Now().ToString(TEXT("%Y.%m.%d-%H:%M:%S.%s"));
-	UE_LOG(LogBase, Log, TEXT("Received Message at: %s"), *Timestamp);
-	UE_LOG(LogBase, Log, TEXT("Total Processed: %d"), TotalProcessedCount.GetValue());
+	// UE_LOG(LogBase, Log, TEXT("Received Message at: %s"), *Timestamp);
+	// UE_LOG(LogBase, Log, TEXT("Total Processed: %d"), TotalProcessedCount.GetValue());
 }
 
 UApiMessage* UDxDataSubsystem::GetOrLoadApiHandler(UClass* HandlerClass)

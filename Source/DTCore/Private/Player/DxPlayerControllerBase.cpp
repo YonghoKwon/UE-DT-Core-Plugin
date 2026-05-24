@@ -46,6 +46,11 @@ void ADxPlayerControllerBase::SetupInputComponent()
 		EnhancedInputComponent->BindAction(RightMouseButtonAction, ETriggerEvent::Triggered, this, &ADxPlayerControllerBase::ClickRightMouseButton);
 		EnhancedInputComponent->BindAction(LeftMouseButtonAction, ETriggerEvent::Triggered, this, &ADxPlayerControllerBase::ClickLeftMouseButton);
 
+		if (TestPimsKeyAction)
+		{
+			EnhancedInputComponent->BindAction(TestPimsKeyAction, ETriggerEvent::Triggered, this, &ADxPlayerControllerBase::HandleTestPimsKeyPressed);
+		}
+
 		// 일반 Number 버튼 추가 (추가 바인딩 필요 시)
 		// for (int32 i = 0; i < NumberKeyActions.Num(); ++i)
 		// {
@@ -167,6 +172,11 @@ void ADxPlayerControllerBase::ClickRightMouseButton(const FInputActionValue& Val
 	}
 }
 
+void ADxPlayerControllerBase::HandleTestPimsKeyPressed(const FInputActionValue& Value)
+{
+	OnTestPimsKeyPressed.Broadcast();
+}
+
 // 마우스 호버 감지
 void ADxPlayerControllerBase::CheckMouseHover()
 {
@@ -192,16 +202,34 @@ void ADxPlayerControllerBase::CheckMouseHover()
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(GetPawn());
 
-	FHitResult HitResult;
+	TArray<FHitResult> HitResults;
 	FVector Start = WorldLocation;
-	FVector End = Start + (WorldDirection * 100000.0f); // 100km
+	FVector End = Start + (WorldDirection * 150000.0f); // 100km
 
 	// 라인 트레이스
-	bool bHit = GetWorld()->LineTraceSingleByObjectType(
-		HitResult, Start, End, ObjectQueryParams, QueryParams
+	GetWorld()->LineTraceMultiByObjectType(
+		HitResults, Start, End, ObjectQueryParams, QueryParams
 	);
 
-	AActor* HitActorRaw = HitResult.GetActor();
+	const FHitResult* BestHit = nullptr;
+	for (const FHitResult& Hit : HitResults)
+	{
+		if (const UPrimitiveComponent* Comp = Hit.GetComponent())
+		{
+			if (Comp->GetCollisionObjectType() == ECC_GameTraceChannel1)
+			{
+				BestHit = &Hit;
+				break;
+			}
+		}
+	}
+
+	if (!BestHit && HitResults.Num() > 0)
+	{
+		BestHit = &HitResults[0];
+	}
+
+	AActor* HitActorRaw = BestHit ? BestHit->GetActor() : nullptr;
 
 	// 같은 액터 위에서 마우스가 움직일 때는 로직 건너뜀
 	if (CurrentHoveredActor && CurrentHoveredActor == HitActorRaw)
@@ -218,13 +246,16 @@ void ADxPlayerControllerBase::CheckMouseHover()
 	}
 
 	// 새 액터 Hover
-	if (AInteractableActor* NewHitActor = Cast<AInteractableActor>(HitActorRaw))
+	if (BestHit)
 	{
-		UPrimitiveComponent* NewHitComp = HitResult.GetComponent();
+		if (AInteractableActor* NewHitActor = Cast<AInteractableActor>(HitActorRaw))
+		{
+			UPrimitiveComponent* NewHitComp = BestHit->GetComponent();
 
-		NewHitActor->OnCursorHover(NewHitComp);
-		CurrentHoveredActor = NewHitActor;
-		CurrentHoveredMesh = NewHitComp;
+			NewHitActor->OnCursorHover(NewHitComp);
+			CurrentHoveredActor = NewHitActor;
+			CurrentHoveredMesh = NewHitComp;
+		}
 	}
 }
 

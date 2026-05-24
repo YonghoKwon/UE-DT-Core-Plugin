@@ -6,6 +6,13 @@
 
 class IStompClient;
 
+UENUM()
+enum class ETopicRouteType : uint8
+{
+	WebSocket,
+	Api,
+};
+
 USTRUCT(BlueprintType)
 struct FWebSocketMessage
 {
@@ -56,7 +63,7 @@ public:
 	UFUNCTION(Category = "DxWebSocket")
 	void ReceivedMessage(const FWebSocketMessage& Message);
 	UFUNCTION(Category = "DxWebSocket")
-	FString Subscribe(const FString& Destination, FSTOMPSubscriptionEvent EventCallback, FSTOMPRequestCompleted CompletionCallback);
+	FString Subscribe(const FString& Destination, FSTOMPSubscriptionEvent EventCallback, const FSTOMPRequestCompleted CompletionCallback);
 	UFUNCTION(Category = "DxWebSocket")
 	void Unsubscribe(const FString& Subscription, const FSTOMPRequestCompleted& CompletionCallback);
 private:
@@ -88,6 +95,10 @@ private:
 	const float InitialRetryDelay = 1.0f; // 초기 대기 시간 (초)
 	const float MaxRetryDelay = 60.0f;    // 최대 대기 시간 (초)
 	const float BackoffMultiplier = 2.0f; // 시간 증가 배수
+
+	TMap<FString, FString> SubscriptionIds;
+
+	TMap<FString, ETopicRouteType> TopicRouteMap;
 protected:
 	TSharedPtr<IStompClient> StompClient;
 	TMap<FName, FString> LoginInfo;
