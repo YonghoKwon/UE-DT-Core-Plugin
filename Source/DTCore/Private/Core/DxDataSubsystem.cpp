@@ -29,6 +29,9 @@ UDxDataSubsystem::UDxDataSubsystem()
 void UDxDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	bIsShuttingDown = false;
+	bApiProcessing = false;
+	bWebSocketProcessing = false;
 
 	if (ApiDataTable)
 	{
@@ -103,14 +106,25 @@ void UDxDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UDxDataSubsystem::Deinitialize()
 {
-	Super::Deinitialize();
+	bIsShuttingDown = true;
+	bApiProcessing = false;
+	bWebSocketProcessing = false;
 
 	WebSocketHandlerInstanceCache.Empty();
 	ApiHandlerInstanceCache.Empty();
+	CachedHandlerApiMessageMap.Reset();
+	CachedHandlerTransactionCodeMessageMap.Reset();
+
+	Super::Deinitialize();
 }
 
 void UDxDataSubsystem::Tick(float DeltaTime)
 {
+	if (bIsShuttingDown)
+	{
+		return;
+	}
+
 	// 각각의 처리 함수를 호출
 	ProcessApiQueue();
 	ProcessWebSocketQueue();
@@ -118,17 +132,22 @@ void UDxDataSubsystem::Tick(float DeltaTime)
 
 TStatId UDxDataSubsystem::GetStatId() const
 {
-	return TStatId();
+	RETURN_QUICK_DECLARE_CYCLE_STAT(UDxDataSubsystem, STATGROUP_Tickables);
 }
 
 void UDxDataSubsystem::EnqueueApiData(const FString& Data)
 {
+	if (bIsShuttingDown)
+	{
+		return;
+	}
 	ApiDataQueue.Enqueue(Data);
 }
 
 void UDxDataSubsystem::ProcessApiQueue()
 {
-	if (ApiDataQueue.IsEmpty()) return;
+	if (bIsShuttingDown || ApiDataQueue.IsEmpty()) return;
+	if (bApiProcessing.AtomicSet(true)) return;
 
     const double StartTime = FPlatformTime::Seconds();
     const double TimeBudget = 0.005;
@@ -155,8 +174,12 @@ void UDxDataSubsystem::ProcessApiQueue()
         {
 	        // 작업 시작 전 인스턴스 유효성 체크
 	        TObjectPtr<UDxDataSubsystem> StrongThis = WeakThis.Get();
-	        if (!StrongThis)
+	        if (!StrongThis || StrongThis->bIsShuttingDown || !SharedMap.IsValid())
 	        {
+		        if (StrongThis)
+		        {
+			        StrongThis->bApiProcessing = false;
+		        }
 		        return; // 이미 Subsystem이 소멸되었으면 작업 중단
 	        }
 
@@ -203,37 +226,47 @@ void UDxDataSubsystem::ProcessApiQueue()
 	            }
             }
 
-            if (BatchResults.Num() > 0)
-            {
-	            AsyncTask(ENamedThreads::GameThread, [WeakThis, BatchResults]()
-	            {
-		            // 다시 한 번 유효성 체크 (그 사이 소멸되었을 수 있음)
-		            TObjectPtr<UDxDataSubsystem> StrongThisGame = WeakThis.Get();
-		            if (StrongThisGame)
-		            {
-			            for (const auto& Item : BatchResults)
-			            {
-				            if (IsValid(Item.Handler))
-				            {
-					            // 최종 데이터 처리 실행
-					            Item.Handler->ProcessStructData(Item.Data);
-				            }
-			            }
-		            }
-	            });
-            }
+	        AsyncTask(ENamedThreads::GameThread, [WeakThis, BatchResults]()
+	        {
+		        // 다시 한 번 유효성 체크 (그 사이 소멸되었을 수 있음)
+		        TObjectPtr<UDxDataSubsystem> StrongThisGame = WeakThis.Get();
+		        if (StrongThisGame)
+		        {
+			        if (!StrongThisGame->bIsShuttingDown)
+			        {
+				        for (const auto& Item : BatchResults)
+				        {
+					        if (IsValid(Item.Handler))
+					        {
+						        // 최종 데이터 처리 실행
+						        Item.Handler->ProcessStructData(Item.Data);
+					        }
+				        }
+			        }
+			        StrongThisGame->bApiProcessing = false;
+		        }
+	        });
         });
     }
+	else
+	{
+		bApiProcessing = false;
+	}
 }
 
 void UDxDataSubsystem::EnqueueWebSocketData(const FString& Data)
 {
+	if (bIsShuttingDown)
+	{
+		return;
+	}
 	WebSocketDataQueue.Enqueue(Data);
 }
 
 void UDxDataSubsystem::ProcessWebSocketQueue()
 {
-	if (WebSocketDataQueue.IsEmpty()) return;
+	if (bIsShuttingDown || WebSocketDataQueue.IsEmpty()) return;
+	if (bWebSocketProcessing.AtomicSet(true)) return;
 
     const double StartTime = FPlatformTime::Seconds();
     const double TimeBudget = 0.005;
@@ -259,8 +292,12 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 		{
 			// 작업 시작 전 인스턴스 유효성 체크
 			TObjectPtr<UDxDataSubsystem> StrongThis = WeakThis.Get();
-			if (!StrongThis)
+			if (!StrongThis || StrongThis->bIsShuttingDown || !SharedMap.IsValid())
 			{
+				if (StrongThis)
+				{
+					StrongThis->bWebSocketProcessing = false;
+				}
 				return; // 이미 Subsystem이 소멸되었으면 작업 중단
 			}
 
@@ -303,13 +340,13 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 				}
 			}
 
-			if (BatchResults.Num() > 0)
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, BatchResults]()
 			{
-				AsyncTask(ENamedThreads::GameThread, [WeakThis, BatchResults]()
+				// 다시 한 번 유효성 체크 (그 사이 소멸되었을 수 있음)
+				TObjectPtr<UDxDataSubsystem> StrongThisGame = WeakThis.Get();
+				if (StrongThisGame)
 				{
-					// 다시 한 번 유효성 체크 (그 사이 소멸되었을 수 있음)
-					TObjectPtr<UDxDataSubsystem> StrongThisGame = WeakThis.Get();
-					if (StrongThisGame)
+					if (!StrongThisGame->bIsShuttingDown)
 					{
 						// 메인 스레드
 						for (const auto& Item : BatchResults)
@@ -324,9 +361,14 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 							StrongThisGame->TotalProcessedCount.Increment();
 						}
 					}
-				});
-			}
+					StrongThisGame->bWebSocketProcessing = false;
+				}
+			});
 		});
+	}
+	else
+	{
+		bWebSocketProcessing = false;
 	}
 
     // 화면 디버깅

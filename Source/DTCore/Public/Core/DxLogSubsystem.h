@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "HAL/ThreadSafeBool.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "DxLogSubsystem.generated.h"
 
@@ -42,5 +43,7 @@ private:
 	FCriticalSection BufferMutex;
 	// [NEW] 현재 파일 쓰기 작업이 진행 중인지 체크
 	FThreadSafeBool bIsWriting;
+	// 종료 중 새 비동기 작업을 제한하기 위한 플래그
+	FThreadSafeBool bIsShuttingDown = false;
 protected:
 };

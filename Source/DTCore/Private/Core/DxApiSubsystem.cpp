@@ -2,8 +2,10 @@
 
 #include "DTCore.h"
 #include "Core/DxDataSubsystem.h"
+#include "Core/DTCoreRuntimeConfig.h"
 #include "HttpModule.h"
 #include "Core/DTCoreSettings.h"
+#include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 
 UDxApiSubsystem::UDxApiSubsystem()
@@ -12,7 +14,7 @@ UDxApiSubsystem::UDxApiSubsystem()
 
 	if (Settings->ApiDataTable.ToSoftObjectPath().IsValid())
 	{
-		DT_Api = Settings->ApiDataTable.LoadSynchronous();
+		ApiDataTable = Settings->ApiDataTable.LoadSynchronous();
 	}
 }
 
@@ -20,6 +22,7 @@ void UDxApiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
+	DTCoreRuntimeConfig::EnsureRuntimeOverrideTemplate();
 	HttpModule = &FHttpModule::Get();
 }
 
@@ -30,7 +33,7 @@ void UDxApiSubsystem::Deinitialize()
 	{
 		if (ActiveHttpRequests.IsValidIndex(i))
 		{
-			TSharedRef<IHttpRequest> Request = ActiveHttpRequests[i];
+			TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = ActiveHttpRequests[i];
 			if (Request->GetStatus() == EHttpRequestStatus::Processing)
 			{
 				Request->CancelRequest();
@@ -38,15 +41,20 @@ void UDxApiSubsystem::Deinitialize()
 		}
 	}
 	ActiveHttpRequests.Empty();
+	HttpModule = nullptr;
 
 	Super::Deinitialize();
 }
 
 void UDxApiSubsystem::DxHttpCall(const FString& FullUrl, const FString& Verb, const FString& ContentString, const TMap<FString, FString>& Headers, FDxApiCallback Callback)
 {
-	if (!HttpModule) return;
+	if (!HttpModule)
+	{
+		Callback.ExecuteIfBound(false, 0, TEXT("HttpModule is not initialized."));
+		return;
+	}
 
-	TSharedRef<IHttpRequest> Request = HttpModule->CreateRequest();
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = HttpModule->CreateRequest();
 	Request->SetURL(FullUrl);
 	// Method 설정 (GET, POST, PUT, DELETE 등)
 	Request->SetVerb(Verb);
@@ -65,24 +73,28 @@ void UDxApiSubsystem::DxHttpCall(const FString& FullUrl, const FString& Verb, co
 
 	// 요청을 보내기 전에 추적 배열에 등록
 	ActiveHttpRequests.Add(Request);
-	Request->ProcessRequest();
+	if (!Request->ProcessRequest())
+	{
+		ActiveHttpRequests.Remove(Request);
+		Callback.ExecuteIfBound(false, 0, TEXT("HTTP request failed to start."));
+	}
 }
 
 void UDxApiSubsystem::DxRequestApi(const FName& RowName, FDxApiCallback Callback)
 {
 	// DT_Api 데이터테이블이 유효한지 체크
-	if (!DT_Api)
+	if (!ApiDataTable)
 	{
-		DX_LOG(GetWorld(), TEXT("DxRequestApi: DT_Api is not set."));
-		Callback.ExecuteIfBound(false, 0, TEXT("DT_Api is not set"));
+		DX_LOG(GetWorld(), TEXT("DxRequestApi: ApiDataTable is not set."));
+		Callback.ExecuteIfBound(false, 0, TEXT("ApiDataTable is not set"));
 		return;
 	}
 
 	// 데이터테이블에서 Row 검색
-	FApiStruct* ApiData = DT_Api->FindRow<FApiStruct>(RowName, TEXT("DxRequestApi"));
+	FApiStruct* ApiData = ApiDataTable->FindRow<FApiStruct>(RowName, TEXT("DxRequestApi"));
 	if (!ApiData)
 	{
-		DX_LOG(GetWorld(), TEXT("DxRequestApi: Row '%s' not found in DT_Api."), *RowName.ToString());
+		DX_LOG(GetWorld(), TEXT("DxRequestApi: Row '%s' not found in ApiDataTable."), *RowName.ToString());
 		Callback.ExecuteIfBound(false, 0, FString::Printf(TEXT("Row '%s' not found"), *RowName.ToString()));
 		return;
 	}
@@ -106,18 +118,18 @@ void UDxApiSubsystem::DxRequestApi(const FName& RowName, FDxApiCallback Callback
 void UDxApiSubsystem::DxRequestApiWithParameter(const FName& RowName, FDxApiCallback Callback, const TArray<FString>& Parameters)
 {
 	// DT_Api 데이터테이블이 유효한지 체크
-	if (!DT_Api)
+	if (!ApiDataTable)
 	{
-		DX_LOG(GetWorld(), TEXT("DxRequestApiWithParameter: DT_Api is not set."));
-		Callback.ExecuteIfBound(false, 0, TEXT("DT_Api is not set"));
+		DX_LOG(GetWorld(), TEXT("DxRequestApiWithParameter: ApiDataTable is not set."));
+		Callback.ExecuteIfBound(false, 0, TEXT("ApiDataTable is not set"));
 		return;
 	}
 
 	// 데이터테이블에서 Row 검색
-	FApiStruct* ApiData = DT_Api->FindRow<FApiStruct>(RowName, TEXT("DxRequestApiWithParameter"));
+	FApiStruct* ApiData = ApiDataTable->FindRow<FApiStruct>(RowName, TEXT("DxRequestApiWithParameter"));
 	if (!ApiData)
 	{
-		DX_LOG(GetWorld(), TEXT("DxRequestApiWithParameter: Row '%s' not found in DT_Api."), *RowName.ToString());
+		DX_LOG(GetWorld(), TEXT("DxRequestApiWithParameter: Row '%s' not found in ApiDataTable."), *RowName.ToString());
 		Callback.ExecuteIfBound(false, 0, FString::Printf(TEXT("Row '%s' not found"), *RowName.ToString()));
 		return;
 	}
@@ -152,7 +164,7 @@ void UDxApiSubsystem::DxRequestApiWithParameter(const FName& RowName, FDxApiCall
 	DxHttpCall(FullUrl, MethodType, TEXT(""), DefaultHeaders, Callback);
 }
 
-void UDxApiSubsystem::InternalOnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful, FDxApiCallback Callback)
+void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request, TSharedPtr<IHttpResponse, ESPMode::ThreadSafe> Response, bool bWasSuccessful, FDxApiCallback Callback)
 {
 	// 응답이 왔으므로 (성공이든 실패든) 추적 배열에서 제거
 	if (Request.IsValid())
@@ -201,64 +213,52 @@ void UDxApiSubsystem::InternalOnResponseReceived(FHttpRequestPtr Request, FHttpR
 	Callback.ExecuteIfBound(bIsOk, ResponseCode, Content);
 }
 
-FString UDxApiSubsystem::GetServerUrl(EApiType ApiType)
+FString UDxApiSubsystem::GetServerUrl(EApiType ApiType) const
 {
-	// ApiType별 키 결정
-	FString IniKey;
+	// 1. Game.ini override 값을 먼저 읽는다. 값이 비어 있으면 무시한다.
+	// 패키징 후 생성되는 [DTCoreRuntimeOverride] 섹션에 값을 채우면 재패키징 없이 URL을 바꿀 수 있다.
+	FString ConfigKey;
+	FString SettingsValue;
+
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+
 	switch (ApiType)
 	{
-	case EApiType::Local: IniKey = TEXT("LocalApiUrl"); break;
-	case EApiType::Test:  IniKey = TEXT("TestApiUrl");  break;
-	case EApiType::Prod:  IniKey = TEXT("ProdApiUrl");  break;
-	default:              IniKey = TEXT("BaseApiUrl");  break;
+	case EApiType::Local:
+		ConfigKey = TEXT("LocalApiUrl");
+		SettingsValue = Settings ? Settings->LocalApiUrl : TEXT("");
+		break;
+	case EApiType::Test:
+		ConfigKey = TEXT("TestApiUrl");
+		SettingsValue = Settings ? Settings->TestApiUrl : TEXT("");
+		break;
+	case EApiType::Prod:
+		ConfigKey = TEXT("ProdApiUrl");
+		SettingsValue = Settings ? Settings->ProdApiUrl : TEXT("");
+		break;
+	default:
+		ConfigKey = TEXT("BaseApiUrl");
+		SettingsValue = Settings ? Settings->BaseApiUrl : TEXT("");
+		break;
 	}
 
-	// 1. Game.ini에서 해당 키 읽기
-	FString GameIniPath = FPaths::ConvertRelativePathToFull(
-		FPaths::LaunchDir() / TEXT("m7at10_dt") / TEXT("Saved") / TEXT("Config")
-		/ FPlatformProperties::PlatformName()
-		/ TEXT("Game.ini")
-	);
-
-	FString IniContent;
-	if (FFileHelper::LoadFileToString(IniContent, *GameIniPath))
+	FString RuntimeOverride;
+	if (DTCoreRuntimeConfig::TryReadRuntimeOverride(*ConfigKey, RuntimeOverride))
 	{
-		TArray<FString> Lines;
-		IniContent.ParseIntoArray(Lines, TEXT("\n"), true);
-		for (const FString& Line : Lines)
-		{
-			FString TrimmedLine = Line.TrimStartAndEnd();
-			TrimmedLine.RemoveFromEnd(TEXT("\r"));
-			if (TrimmedLine.StartsWith(IniKey + TEXT("=")))
-			{
-				FString IniUrl = TrimmedLine.Mid(IniKey.Len() + 1).TrimStartAndEnd();
-				if (!IniUrl.IsEmpty())
-				{
-					return IniUrl;
-				}
-			}
-		}
+		return RuntimeOverride;
 	}
 
-	// 2. DTCoreSettings 풀백
-	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
-	if (ensure(Settings))
+	if (!SettingsValue.IsEmpty())
 	{
-		switch (ApiType)
-		{
-		case EApiType::Local: return Settings->LocalApiUrl;
-		case EApiType::Test: return Settings->TestApiUrl;
-		case EApiType::Prod: return Settings->ProdApiUrl;
-		default: return Settings->BaseApiUrl;
-		}
+		return SettingsValue;
 	}
 
-	return TEXT("http://localhost:8090");
+	return Settings && !Settings->BaseApiUrl.IsEmpty() ? Settings->BaseApiUrl : TEXT("http://localhost:8090");
 }
-FString UDxApiSubsystem::GetHttpStr(EApiMethod ApiMethod)
+
+FString UDxApiSubsystem::GetHttpStr(EApiMethod ApiMethod) const
 {
 	// HTTP Method 변환
 	const UEnum* ApiMethodEnum = StaticEnum<EApiMethod>();
 	return ApiMethodEnum->GetDisplayNameTextByValue(static_cast<int64>(ApiMethod)).ToString();
 }
-

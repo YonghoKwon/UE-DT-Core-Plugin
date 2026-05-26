@@ -32,6 +32,12 @@ public:
 	void CompactAllInvalidObjects();
 
 	UFUNCTION(BlueprintCallable, Category = "DxObject")
+	bool ContainsObject(FName Category, const FString& Id) const;
+
+	UFUNCTION(BlueprintCallable, Category = "DxObject")
+	TArray<FString> GetObjectIds(FName Category) const;
+
+	UFUNCTION(BlueprintCallable, Category = "DxObject")
 	AActor* FindObject(FName Category, const FString& Id) const;
 
 	UFUNCTION(BlueprintCallable, Category = "DxObject")
@@ -55,6 +61,7 @@ public:
 		return Cast<T>(FindObject(Category, Id));
 	}
 
+	// C++ 전용 스냅샷 조회가 필요할 때 사용합니다. Blueprint에서는 GetAllObjects/GetObjectIds를 우선 사용하세요.
 	const TMap<FString, TObjectPtr<AActor>>* GetCategoryMap(FName Category) const;
 
 private:

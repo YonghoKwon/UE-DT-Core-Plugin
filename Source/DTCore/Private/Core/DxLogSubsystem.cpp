@@ -10,15 +10,11 @@
 void UDxLogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	bIsShuttingDown = false;
 
 	// Initialize 시점에 한 번만 계산해서 캐싱
 	CachedLogDirectory = GetLogDirectory();
-
-#if PLATFORM_LINUX
-	system(TCHAR_TO_UTF8(*FString::Printf(TEXT("mkdir -p \"%s\""), *CachedLogDirectory)));
-#else
 	IFileManager::Get().MakeDirectory(*CachedLogDirectory, true);
-#endif
 
 	WriteLog(TEXT("========================================="));
 	WriteLog(TEXT("   SHIPPING LOG STARTED - SYSTEM INIT    "));
@@ -27,15 +23,24 @@ void UDxLogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	FCoreDelegates::OnExit.AddUObject(this, &UDxLogSubsystem::OnGameExit);
 
-	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this]()
+	TWeakObjectPtr<UDxLogSubsystem> WeakThis(this);
+	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [WeakThis]()
 	{
-		DeleteOldLogs(7);
+		if (UDxLogSubsystem* StrongThis = WeakThis.Get())
+		{
+			if (!StrongThis->bIsShuttingDown)
+			{
+				StrongThis->DeleteOldLogs(7);
+			}
+		}
 	});
 }
 
 void UDxLogSubsystem::Deinitialize()
 {
 	FCoreDelegates::OnExit.RemoveAll(this);
+	bIsShuttingDown = true;
+	ProcessLogBuffer();
 	Super::Deinitialize();
 }
 
@@ -101,13 +106,23 @@ void UDxLogSubsystem::WriteLog(const FString& LogContent, bool bPrintToScreen, F
 		LogBuffer.Emplace(TargetFileName, FinalLog);
 	}
 
+	if (bIsShuttingDown)
+	{
+		ProcessLogBuffer();
+		return;
+	}
+
 	// 4. [중요] 현재 쓰는 놈(Consumer)이 없으면, 하나 깨워서 일 시킴
 	// bIsWriting이 false였다면 true로 바꾸고 if문 진입 (Atomic)
 	if (!bIsWriting.AtomicSet(true))
 	{
-		AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this]()
+		TWeakObjectPtr<UDxLogSubsystem> WeakThis(this);
+		AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [WeakThis]()
 		{
-			ProcessLogBuffer();
+			if (UDxLogSubsystem* StrongThis = WeakThis.Get())
+			{
+				StrongThis->ProcessLogBuffer();
+			}
 		});
 	}
 }

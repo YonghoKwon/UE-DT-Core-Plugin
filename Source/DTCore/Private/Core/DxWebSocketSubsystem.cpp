@@ -2,6 +2,7 @@
 
 #include "DTCore.h"
 #include "Core/DxDataSubsystem.h"
+#include "Core/DTCoreRuntimeConfig.h"
 #include "IStompClient.h"
 #include "IStompMessage.h"
 #include "StompModule.h"
@@ -11,12 +12,31 @@ void UDxWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
-	LoginInfo.Add("login", "artemis");
-	LoginInfo.Add("passcode", "artemis");
+	DTCoreRuntimeConfig::EnsureRuntimeOverrideTemplate();
+	LoginInfo.Empty();
 
 	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
 	if (ensure(Settings))
 	{
+		FString RuntimeLogin;
+		const FString LoginValue = DTCoreRuntimeConfig::TryReadRuntimeOverride(TEXT("WebSocketLogin"), RuntimeLogin)
+			? RuntimeLogin
+			: Settings->WebSocketLogin;
+
+		FString RuntimePasscode;
+		const FString PasscodeValue = DTCoreRuntimeConfig::TryReadRuntimeOverride(TEXT("WebSocketPasscode"), RuntimePasscode)
+			? RuntimePasscode
+			: Settings->WebSocketPasscode;
+
+		if (!LoginValue.IsEmpty())
+		{
+			LoginInfo.Add("login", LoginValue);
+		}
+		if (!PasscodeValue.IsEmpty())
+		{
+			LoginInfo.Add("passcode", PasscodeValue);
+		}
+
 		for (const FString& Topic : Settings->WebSocketTopics)
 		{
 			TopicRouteMap.Add(Topic, ETopicRouteType::WebSocket);
@@ -32,16 +52,27 @@ void UDxWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UDxWebSocketSubsystem::Deinitialize()
 {
-	Super::Deinitialize();
-
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{
 		// World 대신 GameInstance의 타이머 초기화
 		GameInstance->GetTimerManager().ClearTimer(ReconnectTimerHandle);
 	}
 
-	this->DisconnectStompClient(LoginInfo);
-	StompClient.Reset();
+	if (StompClient.IsValid())
+	{
+		StompClient->OnConnected().RemoveAll(this);
+		StompClient->OnConnectionError().RemoveAll(this);
+		StompClient->OnClosed().RemoveAll(this);
+		StompClient->OnError().RemoveAll(this);
+
+		if (StompClient->IsConnected())
+		{
+			StompClient->Disconnect(LoginInfo);
+		}
+		StompClient.Reset();
+	}
+
+	Super::Deinitialize();
 }
 
 void UDxWebSocketSubsystem::ConnectWebSocket()
@@ -72,42 +103,16 @@ void UDxWebSocketSubsystem::ConnectWebSocket()
 		TryReconnect();
 		return;
 	}
-	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
-
-	FString WsUrl;
-	FString GameIniPath = FPaths::ConvertRelativePathToFull(
-		FPaths::LaunchDir() / TEXT("m7at10_dt") / TEXT("Saved") / TEXT("Config")
-		/ FPlatformProperties::PlatformName()
-		/ TEXT("Game.ini")
-	);
-
-	FString IniContent;
-	if (FFileHelper::LoadFileToString(IniContent, *GameIniPath))
-	{
-		TArray<FString> Lines;
-		IniContent.ParseIntoArray(Lines, TEXT("\n"), true);
-		for (const FString& Line : Lines)
-		{
-			FString TrimmedLine = Line.TrimStartAndEnd();
-			TrimmedLine.RemoveFromEnd(TEXT("\r"));
-			if (TrimmedLine.StartsWith(TEXT("WebSocketUrl=")))
-			{
-				WsUrl = TrimmedLine.Mid(FString(TEXT("WebSocketUrl=")).Len()).TrimStartAndEnd();
-				break;
-			}
-		}
-	}
 
 	const UDTCoreSettings* CoreSettings = GetDefault<UDTCoreSettings>();
+	FString RuntimeWsUrl;
+	const FString WsUrl = DTCoreRuntimeConfig::TryReadRuntimeOverride(TEXT("WebSocketUrl"), RuntimeWsUrl)
+		? RuntimeWsUrl
+		: ensure(CoreSettings) && !CoreSettings->WebSocketUrl.IsEmpty()
+			? CoreSettings->WebSocketUrl
+			: TEXT("ws://localhost:61616");
 
-	DX_LOG(GetWorld(), TEXT("[DEBUG] GameIniPath: %s"), *GameIniPath);
 	DX_LOG(GetWorld(), TEXT("[DEBUG] ConnectWebSocket URL: %s"), *WsUrl);
-	DX_LOG(GetWorld(), TEXT("[DEBUG] ConnectWebSocket URL: %s"), *CoreSettings->WebSocketUrl);
-
-	if (WsUrl.IsEmpty())
-	{
-		WsUrl = ensure(CoreSettings) ? CoreSettings->WebSocketUrl : TEXT("ws://172.18.45.234:61616");
-	}
 
 	StompClient = StompModule->CreateClient(WsUrl);
 
@@ -176,7 +181,7 @@ void UDxWebSocketSubsystem::ReceivedMessage(const FWebSocketMessage& Message)
 		DS->EnqueueWebSocketData(BodyString);
 		break;
 	case ETopicRouteType::Api:
-		DS->EnqueueWebSocketData(BodyString);
+		DS->EnqueueApiData(BodyString);
 		break;
 	}
 }
@@ -226,8 +231,10 @@ FString UDxWebSocketSubsystem::Subscribe(const FString& Destination, const FSTOM
 			FWebSocketMessage Msg; // 스택 할당 (매우 빠름, GC 없음)
 			Msg.BodyString = MoveTemp(Body);
 			Msg.Headers = MoveTemp(Headers);
+			Msg.SubscriptionId = MoveTemp(SubId);
 			Msg.Destination = MoveTemp(Dest);
 			Msg.MessageId = MoveTemp(MsgId);
+			Msg.AckId = MoveTemp(AckId);
 
 			EventCallback.ExecuteIfBound(Msg);
 		});

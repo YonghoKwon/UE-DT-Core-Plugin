@@ -120,6 +120,7 @@ void UDxWidget::CloseWidget()
 
 void UDxWidget::CloseWidgetAddLogic_Implementation()
 {
+	// 자식 클래스에서 오버라이드하여 구현 (닫을 때 세부 로직이 필요할 경우)
 }
 
 void UDxWidget::RetryWidget_Implementation()
