@@ -4,6 +4,7 @@
 #include "Core/DxDataSubsystem.h"
 #include "HttpModule.h"
 #include "Core/DTCoreSettings.h"
+#include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Misc/ConfigCacheIni.h"
 
@@ -109,7 +110,7 @@ void UDxApiSubsystem::Deinitialize()
 	{
 		if (ActiveHttpRequests.IsValidIndex(i))
 		{
-			TSharedRef<IHttpRequest> Request = ActiveHttpRequests[i];
+			TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = ActiveHttpRequests[i];
 			if (Request->GetStatus() == EHttpRequestStatus::Processing)
 			{
 				Request->CancelRequest();
@@ -130,7 +131,7 @@ void UDxApiSubsystem::DxHttpCall(const FString& FullUrl, const FString& Verb, co
 		return;
 	}
 
-	TSharedRef<IHttpRequest> Request = HttpModule->CreateRequest();
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = HttpModule->CreateRequest();
 	Request->SetURL(FullUrl);
 	// Method 설정 (GET, POST, PUT, DELETE 등)
 	Request->SetVerb(Verb);
@@ -240,7 +241,7 @@ void UDxApiSubsystem::DxRequestApiWithParameter(const FName& RowName, FDxApiCall
 	DxHttpCall(FullUrl, MethodType, TEXT(""), DefaultHeaders, Callback);
 }
 
-void UDxApiSubsystem::InternalOnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful, FDxApiCallback Callback)
+void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request, TSharedPtr<IHttpResponse, ESPMode::ThreadSafe> Response, bool bWasSuccessful, FDxApiCallback Callback)
 {
 	// 응답이 왔으므로 (성공이든 실패든) 추적 배열에서 제거
 	if (Request.IsValid())
