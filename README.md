@@ -38,6 +38,47 @@ Important settings are defined in `UDTCoreSettings`:
 - API topics
 - Default widget theme
 
+## Runtime override with Game.ini
+
+For packaged clients, API and WebSocket connection values can be changed without repackaging.
+
+The plugin uses this priority:
+
+1. `[DTCoreRuntimeOverride]` values in `Game.ini` if they are not empty
+2. `/Script/DTCore.DTCoreSettings` values in `Game.ini` if they are not empty
+3. `UDTCoreSettings` defaults
+4. code fallback values
+
+The plugin includes `Config/DefaultGame.ini` as a template and also creates missing keys in `GGameIni` during subsystem initialization.
+
+Template:
+
+```ini
+[DTCoreRuntimeOverride]
+BaseApiUrl=
+LocalApiUrl=
+TestApiUrl=
+ProdApiUrl=
+WebSocketUrl=
+WebSocketLogin=
+WebSocketPasscode=
+```
+
+After packaging, fill only the values that should override the defaults. Empty values are ignored.
+
+Example:
+
+```ini
+[DTCoreRuntimeOverride]
+LocalApiUrl=http://192.168.0.10:8090
+TestApiUrl=http://192.168.0.20:8000
+WebSocketUrl=ws://192.168.0.20:61616
+WebSocketLogin=artemis
+WebSocketPasscode=artemis
+```
+
+Restart the client after changing `Game.ini` so the new values are loaded safely.
+
 ## Data processing
 
 `UDxDataSubsystem` receives API and WebSocket payloads through queues. It batches data, parses payloads in background tasks, and runs final processing on the GameThread.
