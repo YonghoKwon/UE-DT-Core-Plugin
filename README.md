@@ -1,267 +1,89 @@
 # UE-DT-Core-Plugin
 
-`UE-DT-Core-Plugin`은 Unreal Engine 기반 디지털 트윈 프로젝트에서 공통으로 사용할 수 있는 Runtime Plugin입니다.
+`UE-DT-Core-Plugin`은 Unreal Engine 기반 디지털 트윈 프로젝트에서 반복적으로 사용하는 런타임 기능을 공통화한 플러그인입니다.
 
-API 통신, WebSocket/STOMP 수신, 데이터 큐 처리, 객체 등록/검색, 로그, UI 기반 기능, 센서 유틸리티를 여러 프로젝트에서 재사용할 수 있도록 분리하는 것을 목표로 합니다.
+API 통신, WebSocket/STOMP 수신, 데이터 큐 처리, 객체 등록/검색, 위젯 관리, 로그, 플레이어/레벨 기반 기능, 센서/상태 컴포넌트 등을 하나의 재사용 가능한 Core 계층으로 제공하는 것을 목표로 합니다.
 
 ---
 
-## 1. 핵심 목적
+## 1. 전체 목표
 
-| 목적 | 설명 |
+| 목표 | 설명 |
 |---|---|
-| 공통 기능 분리 | API, WebSocket, 로그, 객체 관리 등 반복 기능을 공통화합니다. |
-| 프로젝트 독립성 | 특정 프로젝트 모듈이나 특정 프로젝트 경로에 의존하지 않습니다. |
-| 패키징 후 설정 변경 | 다시 패키징하지 않고 API/WebSocket 접속 정보를 바꿀 수 있습니다. |
-| 실시간 데이터 처리 | 수신 데이터를 큐에 넣고 배치/비동기 방식으로 처리합니다. |
-| 확장성 | 프로젝트별 DataTable, Handler, Widget, Search 구현체를 주입해서 사용합니다. |
+| 공통 Runtime 기능 제공 | 여러 디지털 트윈 프로젝트에서 반복되는 기반 기능을 하나의 플러그인으로 관리합니다. |
+| 프로젝트 독립성 유지 | 특정 프로젝트 모듈, 특정 맵, 특정 Actor, 특정 서버 URL에 직접 의존하지 않는 구조를 지향합니다. |
+| 설정 기반 확장 | DataTable, `UDTCoreSettings`, `Game.ini`를 통해 프로젝트별 차이를 주입합니다. |
+| 실시간 데이터 처리 | API/WebSocket 데이터를 큐에 넣고 배치/비동기 방식으로 처리합니다. |
+| UI/객체/검색 공통화 | Runtime Widget, Object Registry, Search Base를 공통 기반으로 제공합니다. |
 
 ---
 
-## 2. 주요 기능
-
-| 기능 | 담당 클래스 | 설명 |
-|---|---|---|
-| API 통신 | `UDxApiSubsystem` | DataTable 기반 API 요청 및 응답 처리 |
-| WebSocket/STOMP | `UDxWebSocketSubsystem` | STOMP 연결, 구독, 재연결, 메시지 라우팅 |
-| 데이터 처리 | `UDxDataSubsystem` | API/WebSocket 데이터를 큐에 넣고 비동기 파싱 후 GameThread에서 처리 |
-| 객체 관리 | `UDxObjectSubsystem` | Actor를 Category/ID 기준으로 등록하고 조회 |
-| 검색 기반 | `UDxSearchSubsystem` | 프로젝트별 검색 기능 구현을 위한 Base Subsystem |
-| 로그 | `UDxLogSubsystem` | 런타임 로그 저장, rotation, 오래된 로그 정리 |
-
----
-
-## 3. 설치 방법
-
-UE 프로젝트의 `Plugins` 폴더 아래에 이 저장소를 복사합니다.
+## 2. 소스 구조 요약
 
 ```text
-YourProject/Plugins/DTCore
+Source/DTCore
+├─ Public
+│  ├─ Api
+│  ├─ ActorComponent
+│  ├─ Core
+│  ├─ InteractableActor
+│  ├─ Lib
+│  ├─ Manager
+│  ├─ Player
+│  ├─ UI
+│  └─ WebSocket
+├─ Private
+│  ├─ ActorComponent
+│  ├─ Core
+│  ├─ InteractableActor
+│  ├─ Lib
+│  ├─ Manager
+│  ├─ Player
+│  └─ UI
+└─ DTCore.Build.cs
 ```
 
-이후 아래 순서로 진행합니다.
-
-```text
-1. Generate Visual Studio project files 실행
-2. Unreal Editor에서 DTCore Plugin 활성화 확인
-3. 프로젝트 빌드
-4. Project Settings 또는 Game.ini에서 DTCore 설정
-```
-
----
-
-## 4. 기본 설정
-
-설정 클래스는 `UDTCoreSettings`입니다.
-
-Project Settings 경로:
-
-```text
-Edit > Project Settings > Plugins > DTCore Settings
-```
-
-주요 설정 항목:
-
-| 항목 | 설명 |
+| 영역 | 역할 |
 |---|---|
-| `ApiDataTable` | API 요청 정의 DataTable |
-| `WebSocketDataTable` | WebSocket TransactionCode 정의 DataTable |
-| `LevelDataTable` | Level 관련 DataTable |
-| `ObjectBPClasses` | Object Category별 Blueprint Class Map |
-| `WebSocketUrl` | 기본 WebSocket URL |
-| `WebSocketLogin` | WebSocket Login 값 |
-| `WebSocketPasscode` | WebSocket Passcode 값 |
-| `BaseApiUrl` | 기본 API URL |
-| `LocalApiUrl` | Local API URL |
-| `TestApiUrl` | Test API URL |
-| `ProdApiUrl` | Production API URL |
-| `WebSocketTopics` | WebSocket 데이터로 처리할 Topic 목록 |
-| `ApiTopics` | API 데이터로 처리할 Topic 목록 |
-| `DefaultWidgetTheme` | 기본 Widget Theme Data |
+| `Core` | 주요 Subsystem, Settings, GameMode/GameInstance, Runtime 설정 유틸리티 |
+| `Api` | API DataTable Row 구조와 API Message Handler 기반 클래스 |
+| `WebSocket` | TransactionCode 기반 WebSocket Message Handler 구조 |
+| `UI` | 공통 Widget, Widget 설정 DataAsset, Theme DataAsset |
+| `ActorComponent` | 동기화, 상태 표시, 센서, 기계 구동 등 공통 ActorComponent 기반 |
+| `Player` | 공통 Player / PlayerController 기반 클래스 |
+| `Manager` | Level Manager 기반 클래스 |
+| `InteractableActor` | UI/상호작용 대상 Actor 기반 |
+| `Lib` | JSON Parser 등 공통 유틸리티 |
 
 ---
 
-## 5. 패키징 후 Game.ini Runtime Override
+## 3. 모듈 의존성
 
-패키징 후에도 API URL, WebSocket URL, WebSocket 계정 정보를 바꿀 수 있도록 `Game.ini` override를 지원합니다.
+`DTCore.Build.cs` 기준으로 Public dependency는 최소화하고, HTTP/WebSocket/STOMP/Slate 계열은 Private dependency로 관리합니다.
 
-즉, 클라이언트를 다시 패키징하지 않고 아래 값을 바꿔가며 테스트할 수 있습니다.
-
-```text
-API URL
-WebSocket URL
-WebSocket Login
-WebSocket Passcode
-```
-
----
-
-## 6. Runtime Override 우선순위
-
-설정값은 아래 순서로 읽습니다.
-
-| 우선순위 | 위치 | 설명 |
-|---:|---|---|
-| 1 | 외부 편집용 `Game.ini`의 `[DTCoreRuntimeOverride]` | 패키징 후 직접 수정하기 위한 최우선 설정 |
-| 2 | 외부 편집용 `Game.ini`의 `[/Script/DTCore.DTCoreSettings]` | Unreal Settings 섹션 직접 override |
-| 3 | Unreal `GGameIni`의 `[DTCoreRuntimeOverride]` | Unreal Config Cache 기반 override |
-| 4 | Unreal `GGameIni`의 `[/Script/DTCore.DTCoreSettings]` | 기본 UDeveloperSettings 섹션 |
-| 5 | `UDTCoreSettings` 기본값 | Project Settings 또는 DefaultGame.ini 값 |
-| 6 | 코드 fallback 값 | 최후의 기본값 |
-
-빈 값은 override로 처리하지 않습니다.
-
-```ini
-LocalApiUrl=
-```
-
-값이 실제로 들어간 경우에만 override 됩니다.
-
-```ini
-LocalApiUrl=http://<api-server>:8090
-```
-
----
-
-## 7. 외부 Game.ini 후보 경로
-
-패키징 방식에 따라 Unreal의 `LaunchDir`, `ProjectDir`가 달라질 수 있습니다.
-
-그래서 DTCore는 하나의 경로만 보지 않고 아래 후보 경로들을 순서대로 확인합니다.
-
-```text
-FPaths::ProjectDir() / Config / Game.ini
-FPaths::LaunchDir() / Config / Game.ini
-FPaths::LaunchDir() / ../../Config/Game.ini
-FPaths::LaunchDir() / <ProjectName> / Config / Game.ini
-```
-
-Windows 패키징 예시:
-
-```text
-Windows/<ProjectName>/Config/Game.ini
-Windows/<ProjectName>/Binaries/Win64/../../Config/Game.ini
-Windows/Config/Game.ini
-```
-
-Linux 패키징 예시:
-
-```text
-Linux/<ProjectName>/Config/Game.ini
-Linux/<ProjectName>/Binaries/Linux/../../Config/Game.ini
-```
-
-파일 위치가 헷갈리면 패키징 폴더에서 확인합니다.
-
-Windows PowerShell:
-
-```powershell
-Get-ChildItem -Recurse -Filter Game.ini
-```
-
-Linux:
-
-```bash
-find . -path "*/Config/Game.ini" -print
-```
-
----
-
-## 8. 자동 생성되는 Game.ini 템플릿
-
-최초 실행 시 DTCore는 외부 편집용 `Game.ini`에 아래 섹션과 키가 없으면 생성/보강합니다.
-
-```ini
-[DTCoreRuntimeOverride]
-BaseApiUrl=
-LocalApiUrl=
-TestApiUrl=
-ProdApiUrl=
-WebSocketUrl=
-WebSocketLogin=
-WebSocketPasscode=
-```
-
-값은 의도적으로 비워둡니다. 필요한 항목만 채워서 사용하면 됩니다.
-
----
-
-## 9. Game.ini 작성 예시
-
-```ini
-[DTCoreRuntimeOverride]
-LocalApiUrl=http://<local-api-server>:8090
-TestApiUrl=http://<test-api-server>:8000
-WebSocketUrl=ws://<websocket-server>:61616
-WebSocketLogin=<login>
-WebSocketPasscode=<passcode>
-```
-
-일부 값만 바꿔도 됩니다.
-
-WebSocket만 바꾸는 예시:
-
-```ini
-[DTCoreRuntimeOverride]
-WebSocketUrl=ws://<websocket-server>:61616
-WebSocketLogin=<login>
-WebSocketPasscode=<passcode>
-```
-
-API만 바꾸는 예시:
-
-```ini
-[DTCoreRuntimeOverride]
-LocalApiUrl=http://<local-api-server>:8090
-TestApiUrl=http://<test-api-server>:8000
-```
-
-수정 후에는 클라이언트를 재시작하는 것을 권장합니다.
-
----
-
-## 10. API URL 선택 방식
-
-API 요청은 DataTable의 `EApiType`에 따라 URL을 선택합니다.
-
-| ApiType | 우선 적용 Key |
+| 구분 | 모듈 |
 |---|---|
-| `Local` | `LocalApiUrl` |
-| `Test` | `TestApiUrl` |
-| `Prod` | `ProdApiUrl` |
-| 기타/default | `BaseApiUrl` |
+| Public | `Core`, `CoreUObject`, `Engine`, `UMG` |
+| Private | `InputCore`, `EnhancedInput`, `HTTP`, `WebSockets`, `Stomp`, `Slate`, `SlateCore`, `DeveloperSettings` |
 
-예를 들어 DataTable Row의 `ApiType`이 `Test`라면 우선 `TestApiUrl`을 찾습니다.
-
-값이 비어 있으면 `UDTCoreSettings`의 `TestApiUrl`, 그다음 `BaseApiUrl` fallback을 사용합니다.
+이 구조는 DTCore를 사용하는 외부 프로젝트에 불필요한 의존성이 전파되는 것을 줄이기 위한 방향입니다.
 
 ---
 
-## 11. WebSocket 설정 방식
+## 4. Core Subsystem 구성
 
-WebSocket은 아래 값을 사용합니다.
+### 4.1 `UDxApiSubsystem`
 
-| Key | 설명 |
-|---|---|
-| `WebSocketUrl` | STOMP WebSocket 접속 URL |
-| `WebSocketLogin` | STOMP login header |
-| `WebSocketPasscode` | STOMP passcode header |
+DataTable에 정의된 API 정보를 기준으로 HTTP 요청을 수행하는 Subsystem입니다.
 
----
+주요 역할:
 
-## 12. API 통신 흐름
-
-```text
-API DataTable Row 선택
-        ↓
-ApiType 기준 URL 결정
-        ↓
-HTTP Method 결정
-        ↓
-HTTP 요청 수행
-        ↓
-응답 성공 시 UDxDataSubsystem::EnqueueApiData 로 전달
-```
+- `FApiStruct` Row 기반 API 요청 수행
+- `EApiType`에 따른 URL 선택
+- `EApiMethod`에 따른 HTTP Method 결정
+- 직접 URL 호출용 `DxHttpCall` 제공
+- 요청 중인 HTTP Request 추적 및 종료 시 Cancel 처리
+- 성공 응답을 `UDxDataSubsystem::EnqueueApiData`로 전달
 
 주요 함수:
 
@@ -269,87 +91,86 @@ HTTP 요청 수행
 DxHttpCall(...)
 DxRequestApi(...)
 DxRequestApiWithParameter(...)
+IsApiDataTableLoaded()
 ```
 
----
+API Row 구조인 `FApiStruct`는 다음 정보를 가집니다.
 
-## 13. WebSocket 통신 흐름
-
-```text
-WebSocket URL / Login / Passcode 결정
-        ↓
-STOMP Client 생성
-        ↓
-Connect
-        ↓
-Topic 구독
-        ↓
-메시지 수신
-        ↓
-Topic 종류에 따라 UDxDataSubsystem으로 전달
-```
-
-Topic 처리 기준:
-
-| Topic 설정 | 전달 대상 |
+| 필드 | 설명 |
 |---|---|
-| `WebSocketTopics` | `EnqueueWebSocketData()` |
-| `ApiTopics` | `EnqueueApiData()` |
+| `ApiType` | Local/Test/Prod 중 어떤 URL을 사용할지 결정 |
+| `ApiMethod` | GET/POST/PUT/DELETE/PATCH |
+| `ApiUrl` | 서버 URL 뒤에 붙는 API path |
+| `ApiResource` | 응답 처리용 Resource Key |
+| `ApiAction` | 응답 처리용 Action Key |
+| `ApiMessageClass` | 응답 파싱/처리 Handler 클래스 |
+| `UseLevels` | 사용 Level 정보 |
+| `Comment` | 설명용 주석 |
 
 ---
 
-## 14. 데이터 처리 흐름
+### 4.2 `UDxWebSocketSubsystem`
+
+STOMP WebSocket 연결, 구독, 수신 메시지 라우팅을 담당합니다.
+
+주요 역할:
+
+- `WebSocketUrl`, Login, Passcode 기반 STOMP 연결
+- 연결 성공 후 Topic 자동 구독
+- 연결 오류/종료 시 재연결 시도
+- Topic 종류에 따라 API Queue 또는 WebSocket Queue로 라우팅
+- 수신 메시지를 GameThread에서 안전하게 Delegate 실행
+
+Topic 라우팅 기준:
+
+| 설정 | 처리 |
+|---|---|
+| `WebSocketTopics` | `UDxDataSubsystem::EnqueueWebSocketData` |
+| `ApiTopics` | `UDxDataSubsystem::EnqueueApiData` |
+
+---
+
+### 4.3 `UDxDataSubsystem`
+
+API/WebSocket에서 들어온 문자열 데이터를 큐에 쌓고, Handler를 통해 파싱/처리하는 Subsystem입니다.
+
+처리 흐름:
 
 ```text
-API / WebSocket 수신
+API/WebSocket 수신
         ↓
-UDxDataSubsystem Queue 적재
+ApiDataQueue 또는 WebSocketDataQueue 적재
         ↓
-Tick에서 일정 시간 예산 안에서 Batch 추출
+Tick에서 제한 시간 내 Batch 추출
         ↓
-Background Thread에서 JSON Parsing
+Background Thread에서 ParseToStruct 실행
         ↓
 GameThread에서 ProcessStructData 실행
 ```
 
-적용된 안정성 처리:
+주요 특징:
+
+- `FTickableGameObject` 기반 Tick 처리
+- API/WebSocket Queue 분리
+- Batch 처리로 다량 메시지 대응
+- `bApiProcessing`, `bWebSocketProcessing`으로 중복 작업 생성 방지
+- `bIsShuttingDown`으로 종료 중 비동기 작업 보호
+- Handler Cache를 사용하여 반복 생성 비용 감소
+
+중요 규칙:
 
 ```text
-Tick마다 백그라운드 작업이 중복 생성되지 않도록 guard 적용
-종료 중에는 큐 처리 중단
-Deinitialize 이후 백그라운드 작업이 UObject를 건드리지 않도록 보호
-ParseToStruct는 순수 파싱 전용으로 사용
+ParseToStruct = 순수 파싱 전용
+ProcessStructData = GameThread에서 최종 처리
 ```
+
+`ParseToStruct` 내부에서는 Actor/Component 접근, Blueprint 호출, `NewObject`, `GetWorld()` 사용을 피해야 합니다.
 
 ---
 
-## 15. Parser Threading 규칙
+### 4.4 `UDxObjectSubsystem`
 
-`UApiMessage::ParseToStruct()`와 `UTransactionCodeMessage::ParseToStruct()`는 백그라운드 스레드에서 호출될 수 있습니다.
-
-따라서 `ParseToStruct()` 내부에서는 아래 작업을 하지 않는 것을 원칙으로 합니다.
-
-```text
-GetWorld() 사용
-Actor / Component 접근
-Blueprint 호출
-NewObject 사용
-GameThread 전용 API 호출
-UObject mutable 상태 변경
-```
-
-역할 분리는 아래와 같습니다.
-
-```text
-ParseToStruct      = 순수 파싱
-ProcessStructData  = GameThread에서 최종 처리
-```
-
----
-
-## 16. Object Registry
-
-`UDxObjectSubsystem`은 Runtime Actor를 카테고리/ID 기준으로 등록하고 조회하는 공통 Registry입니다.
+Runtime Actor를 Category/ID 기준으로 등록하고 조회하는 공통 Registry입니다.
 
 주요 함수:
 
@@ -366,7 +187,7 @@ CompactInvalidObjects(...)
 CompactAllInvalidObjects(...)
 ```
 
-사용 예시:
+활용 예:
 
 ```cpp
 UDxObjectSubsystem* ObjectSubsystem = GetGameInstance()->GetSubsystem<UDxObjectSubsystem>();
@@ -376,11 +197,16 @@ AActor* FoundActor = ObjectSubsystem->FindObject(TEXT("Sensor"), TEXT("LIDAR-001
 
 ---
 
-## 17. Search Subsystem
+### 4.5 `UDxSearchSubsystem`
 
-`UDxSearchSubsystem`은 프로젝트별 검색 기능을 구현하기 위한 Base Subsystem입니다.
+프로젝트별 검색 기능을 구현하기 위한 Base Subsystem입니다.
 
-기존 `uint8` 기반 검색 API는 호환성을 위해 유지되어 있지만, 신규 코드는 `FName` 기반 검색을 사용하는 것을 권장합니다.
+현재 구조:
+
+- 기존 `uint8` 기반 검색 API 유지
+- 신규 코드는 `FName` 기반 검색 권장
+- `FDxSearchOptions`로 최대 결과 수, 대소문자 구분, 부분 일치 여부 설정
+- 프로젝트별 Subsystem에서 `SearchByCategoryName` override 권장
 
 권장 함수:
 
@@ -388,30 +214,49 @@ AActor* FoundActor = ObjectSubsystem->FindObject(TEXT("Sensor"), TEXT("LIDAR-001
 PerformSearchByCategory(FName Category, const FString& SearchText, const FDxSearchOptions& Options);
 ```
 
-프로젝트별 구현체에서는 아래 함수를 override해서 사용합니다.
+---
+
+### 4.6 `UDxWidgetSubsystem`
+
+공통 Widget 생성, 닫기, 자식 Widget 관리, Z-order 처리를 담당합니다.
+
+주요 역할:
+
+- Actor 기반 Widget 열기
+- Widget에서 자식 Widget 열기
+- Widget 닫기
+- 열린 Widget 목록 관리
+- Widget을 앞으로 가져오기
+- MainWidget / AddWidgetPanel 기반 UI 배치 지원
+
+주요 함수:
 
 ```cpp
-SearchByCategoryName(...)
+OpenWidget(...)
+OpenWidgetFromWidget(...)
+CloseWidget(...)
+CloseWidgetFromWidget(...)
+BringToFront(...)
+GetOpenWidgets()
 ```
 
 ---
 
-## 18. Log Subsystem
+### 4.7 `UDxLogSubsystem`
 
-`UDxLogSubsystem`은 Runtime 로그를 파일로 저장합니다.
+Runtime 로그를 파일로 저장하는 Subsystem입니다.
 
 주요 특징:
 
-```text
-비동기 로그 저장
-로그 버퍼링
-날짜별 로그 파일 생성
-로그 파일 크기 기반 rotation
-오래된 로그 삭제
-Linux에서도 Unreal IFileManager 기반 디렉터리 생성 사용
-```
+- 비동기 파일 쓰기
+- 로그 버퍼링
+- 날짜별 로그 파일 생성
+- 파일 크기 기반 rotation
+- 오래된 로그 삭제
+- 종료 시 로그 flush
+- Linux에서도 Unreal `IFileManager` 기반 디렉터리 생성 사용
 
-기본 로그 경로 예시:
+기본 로그 경로 예:
 
 ```text
 <LaunchDir>/Logs/CustomLogs
@@ -419,38 +264,210 @@ Linux에서도 Unreal IFileManager 기반 디렉터리 생성 사용
 
 ---
 
-## 19. 프로젝트 독립성 규칙
+## 5. API / WebSocket Handler 구조
+
+### 5.1 API Handler
+
+`UApiMessage`는 API 응답을 파싱하고 처리하기 위한 기반 클래스입니다.
+
+핵심 함수:
+
+```cpp
+ParseToStruct(const FString& JsonString)
+ProcessStructData(const TSharedPtr<FApiDataBase>& Data)
+```
+
+흐름:
+
+```text
+API 응답 문자열
+        ↓
+ApiResource + ApiAction으로 Handler 검색
+        ↓
+ParseToStruct에서 데이터 구조화
+        ↓
+ProcessStructData에서 최종 반영
+```
+
+---
+
+### 5.2 WebSocket Handler
+
+`UTransactionCodeMessage`는 WebSocket 메시지를 TransactionCode 기준으로 처리하기 위한 기반 클래스입니다.
+
+핵심 함수:
+
+```cpp
+ParseToStruct(const FString& JsonString)
+ProcessStructData(const TSharedPtr<FTransactionCodeDataBase>& Data)
+```
+
+`FTransactionCodeStruct` Row는 TransactionCode 설명, Handler 클래스, 사용 Level, Comment를 관리합니다.
+
+---
+
+## 6. UI 구조
+
+### 6.1 `UDxWidget`
+
+공통 Widget 기반 클래스입니다.
+
+주요 기능:
+
+- 열림/닫힘/재시도 이벤트
+- Close Button / Retry Button 자동 바인딩
+- 부모/자식 Widget 관계 관리
+- Theme 적용
+- Player/Pawn 변경 감지
+- Widget 클릭 시 앞으로 가져오기
+
+Blueprint 확장 포인트:
+
+```cpp
+OpenWidgetAddLogic()
+CloseWidgetAddLogic()
+RetryWidget()
+ApplyTheme()
+```
+
+---
+
+### 6.2 Widget Config / Theme
+
+| 클래스 | 역할 |
+|---|---|
+| `UDxWidgetConfigData` | Widget Flag와 Widget Class 매핑 |
+| `UDxWidgetThemeData` | Widget 색상/스타일 Theme 관리 |
+| `FDxWidgetInfo` | Widget 생성에 필요한 정보 구조 |
+
+---
+
+## 7. ActorComponent / Actor / Player 계층
+
+| 영역 | 설명 |
+|---|---|
+| `DataSyncCompBase` | Actor 데이터 동기화를 위한 Base Component |
+| `StatusVisualizerCompBase` | 상태 시각화를 위한 Base Component |
+| `MechDriverCompBase` | 기계/장비 구동 관련 Base Component |
+| `VirtualDistanceSensorComp` | 가상 거리 센서 Component |
+| `InteractableActor` | UI 또는 상호작용 대상 Actor 기반 |
+| `DxPlayerBase` | 프로젝트 공통 Player 기반 |
+| `DxPlayerControllerBase` | PlayerController 공통 기반 |
+| `DxLevelManagerBase` | Level 전환/관리 기반 |
+
+이 계층은 프로젝트별 Actor/Component가 DTCore의 공통 기능을 상속하거나 조합해서 사용할 수 있도록 만들어진 기반입니다.
+
+---
+
+## 8. 설정 구조
+
+`UDTCoreSettings`는 Project Settings 또는 Config 파일을 통해 DTCore 동작에 필요한 값을 주입합니다.
+
+주요 설정:
+
+| 설정 그룹 | 항목 |
+|---|---|
+| DataTable | `ApiDataTable`, `WebSocketDataTable`, `LevelDataTable`, `ShipObjectNameDataTable` |
+| Network/API | `BaseApiUrl`, `LocalApiUrl`, `TestApiUrl`, `ProdApiUrl` |
+| Network/WebSocket | `WebSocketUrl`, `WebSocketLogin`, `WebSocketPasscode` |
+| Topics | `WebSocketTopics`, `ApiTopics` |
+| UI | `DefaultWidgetTheme` |
+| Object | `ObjectBPClasses` |
+
+---
+
+## 9. Runtime Config / Game.ini Override 요약
+
+패키징 후 API/WebSocket 접속 정보를 바꾸기 위해 `DTCoreRuntimeConfig`가 `Game.ini` 후보 경로를 확인합니다.
+
+우선순위:
+
+```text
+1. 외부 편집용 Game.ini의 [DTCoreRuntimeOverride]
+2. 외부 편집용 Game.ini의 [/Script/DTCore.DTCoreSettings]
+3. Unreal GGameIni의 [DTCoreRuntimeOverride]
+4. Unreal GGameIni의 [/Script/DTCore.DTCoreSettings]
+5. UDTCoreSettings 기본값
+6. 코드 fallback
+```
+
+후보 경로:
+
+```text
+FPaths::ProjectDir() / Config / Game.ini
+FPaths::LaunchDir() / Config / Game.ini
+FPaths::LaunchDir() / ../../Config/Game.ini
+FPaths::LaunchDir() / <ProjectName> / Config / Game.ini
+```
+
+템플릿:
+
+```ini
+[DTCoreRuntimeOverride]
+BaseApiUrl=
+LocalApiUrl=
+TestApiUrl=
+ProdApiUrl=
+WebSocketUrl=
+WebSocketLogin=
+WebSocketPasscode=
+```
+
+빈 값은 override로 처리하지 않습니다. 필요한 항목만 채워서 사용하면 됩니다.
+
+---
+
+## 10. 설치 및 적용 순서
+
+```text
+1. YourProject/Plugins/DTCore 위치에 플러그인 배치
+2. Generate Visual Studio project files 실행
+3. Unreal Editor에서 DTCore Plugin 활성화 확인
+4. 프로젝트 빌드
+5. Project Settings > Plugins > DTCore Settings 설정
+6. 필요한 DataTable / WidgetConfig / ThemeData 연결
+7. 패키징 후 접속 정보 변경이 필요하면 Game.ini override 사용
+```
+
+---
+
+## 11. 패키징 테스트 체크리스트
+
+```text
+1. 프로젝트가 정상 빌드되는지
+2. ApiDataTable / WebSocketDataTable이 정상 로드되는지
+3. WebSocket 연결 로그가 정상 출력되는지
+4. API 응답이 UDxDataSubsystem으로 전달되는지
+5. WebSocket 메시지가 Topic 설정에 따라 올바른 Queue로 들어가는지
+6. ParseToStruct가 Background Thread에서 안전하게 동작하는지
+7. Widget 열기/닫기/자식 Widget 관리가 정상 동작하는지
+8. Game.ini override 값을 채웠을 때 접속 정보가 바뀌는지
+9. 빈 override 값은 기본값으로 fallback 되는지
+10. Windows/Linux 패키징에서 Game.ini 후보 경로가 정상 동작하는지
+```
+
+---
+
+## 12. 프로젝트 독립성 규칙
 
 DTCore는 여러 프로젝트에서 재사용하기 위한 공통 플러그인입니다.
 
-따라서 아래 원칙을 지킵니다.
+지켜야 할 원칙:
 
 ```text
 특정 프로젝트 모듈에 의존하지 않기
 특정 프로젝트명 경로 하드코딩하지 않기
-운영 서버 URL을 코드에 직접 박지 않기
+운영 서버 URL을 cpp에 직접 입력하지 않기
 프로젝트별 Asset, Map, Widget, DataTable은 소비 프로젝트에 두기
 환경별 값은 UDTCoreSettings 또는 Game.ini에서 관리하기
+ParseToStruct 내부에서는 UObject/GameThread 전용 작업을 하지 않기
 ```
 
 ---
 
-## 20. 패키징 테스트 체크리스트
-
-```text
-1. 실행 후 <ProjectName>/Config/Game.ini 파일이 생성되는지
-2. [DTCoreRuntimeOverride] 섹션이 생성되는지
-3. LocalApiUrl 또는 TestApiUrl을 채웠을 때 API 요청 URL이 바뀌는지
-4. WebSocketUrl을 채웠을 때 WebSocket 접속 URL이 바뀌는지
-5. 빈 값은 override되지 않고 기본값으로 fallback 되는지
-6. 수정 후 클라이언트를 재시작했을 때 값이 반영되는지
-```
-
----
-
-## 21. 주의사항
+## 13. 주의사항
 
 - `Game.ini` 수정 후 실행 중 즉시 반영되지는 않습니다. 클라이언트 재시작을 권장합니다.
-- Linux에서는 실행 방식에 따라 `LaunchDir`가 달라질 수 있으므로 생성 위치를 확인해야 합니다.
-- `Config/DefaultGame.ini`는 템플릿 역할입니다. 패키징 환경에 따라 자동 병합 여부가 다를 수 있어, 코드에서도 외부 `Game.ini`를 생성/보강합니다.
-- `ParseToStruct()` 내부에서 UObject/Actor 접근을 하면 스레드 안정성 문제가 생길 수 있습니다.
+- Linux 패키징은 실행 방식에 따라 `LaunchDir`가 달라질 수 있으므로 실제 생성 경로를 확인해야 합니다.
+- `ParseToStruct()` 내부에서 Actor/Component/Blueprint 접근을 하면 스레드 안정성 문제가 생길 수 있습니다.
+- Public Header에 불필요한 의존성이 늘어나면 DTCore를 사용하는 프로젝트의 빌드 의존성도 커질 수 있습니다.
