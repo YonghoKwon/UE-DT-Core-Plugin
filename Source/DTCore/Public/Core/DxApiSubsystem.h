@@ -30,21 +30,24 @@ public:
 	void DxRequestApi(const FName& RowName, FDxApiCallback Callback);
 	UFUNCTION(BlueprintCallable, Category = "DxApi")
 	void DxRequestApiWithParameter(const FName& RowName, FDxApiCallback Callback, const TArray<FString>& Parameters);
+
+	UFUNCTION(BlueprintPure, Category = "DxApi")
+	bool IsApiDataTableLoaded() const { return ApiDataTable != nullptr; }
 private:
 	void InternalOnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bWasSuccessful, FDxApiCallback Callback);
-	FString GetServerUrl(EApiType ApiType);
-	FString GetHttpStr(EApiMethod ApiMethod);
+	FString GetServerUrl(EApiType ApiType) const;
+	FString GetHttpStr(EApiMethod ApiMethod) const;
 protected:
 
 	// Variable
 public:
-	FHttpModule* HttpModule;
+private:
+	FHttpModule* HttpModule = nullptr;
 
 	// 현재 통신 중인 HTTP 요청들을 추적하는 배열 추가
 	TArray<TSharedRef<IHttpRequest>> ActiveHttpRequests;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DxApi")
-	UDataTable* DT_Api;
-private:
+	UPROPERTY()
+	TObjectPtr<UDataTable> ApiDataTable;
 protected:
 };
