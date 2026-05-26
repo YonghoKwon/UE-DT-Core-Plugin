@@ -107,6 +107,32 @@ void UDxObjectSubsystem::CompactAllInvalidObjects()
 	}
 }
 
+bool UDxObjectSubsystem::ContainsObject(FName Category, const FString& Id) const
+{
+	return FindObject(Category, Id) != nullptr;
+}
+
+TArray<FString> UDxObjectSubsystem::GetObjectIds(FName Category) const
+{
+	TArray<FString> Result;
+
+	const TMap<FString, TObjectPtr<AActor>>* CategoryMap = RegisteredObjects.Find(Category);
+	if (!CategoryMap)
+	{
+		return Result;
+	}
+
+	for (const auto& Pair : *CategoryMap)
+	{
+		if (IsValid(Pair.Value.Get()))
+		{
+			Result.Add(Pair.Key);
+		}
+	}
+
+	return Result;
+}
+
 AActor* UDxObjectSubsystem::FindObject(FName Category, const FString& Id) const
 {
 	const TMap<FString, TObjectPtr<AActor>>* CategoryMap = RegisteredObjects.Find(Category);
