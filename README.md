@@ -44,12 +44,25 @@ For packaged clients, API and WebSocket connection values can be changed without
 
 The plugin uses this priority:
 
-1. `[DTCoreRuntimeOverride]` values in `Game.ini` if they are not empty
-2. `/Script/DTCore.DTCoreSettings` values in `Game.ini` if they are not empty
-3. `UDTCoreSettings` defaults
-4. code fallback values
+1. Editable packaged `Game.ini`: `<PackageRoot>/<ProjectName>/Config/Game.ini`
+2. `[DTCoreRuntimeOverride]` values in Unreal `GGameIni` if they are not empty
+3. `/Script/DTCore.DTCoreSettings` values in Unreal `GGameIni` if they are not empty
+4. `UDTCoreSettings` defaults
+5. code fallback values
 
-The plugin includes `Config/DefaultGame.ini` as a template and also creates missing keys in `GGameIni` during subsystem initialization.
+For a Windows package, the editable path is usually:
+
+```text
+Windows/<ProjectName>/Config/Game.ini
+```
+
+For example:
+
+```text
+Windows/m7at10_dt/Config/Game.ini
+```
+
+The plugin creates missing keys in both Unreal `GGameIni` and the editable packaged `Game.ini` during subsystem initialization.
 
 Template:
 
