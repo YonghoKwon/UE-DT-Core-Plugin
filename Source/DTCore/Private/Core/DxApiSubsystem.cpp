@@ -2,88 +2,11 @@
 
 #include "DTCore.h"
 #include "Core/DxDataSubsystem.h"
+#include "Core/DTCoreRuntimeConfig.h"
 #include "HttpModule.h"
 #include "Core/DTCoreSettings.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
-#include "Misc/ConfigCacheIni.h"
-
-namespace
-{
-	constexpr const TCHAR* DTCoreRuntimeOverrideSection = TEXT("DTCoreRuntimeOverride");
-	constexpr const TCHAR* DTCoreSettingsSection = TEXT("/Script/DTCore.DTCoreSettings");
-
-	bool TryReadGameIniString(const TCHAR* Section, const TCHAR* Key, FString& OutValue)
-	{
-		if (!GConfig)
-		{
-			return false;
-		}
-
-		FString Value;
-		if (!GConfig->GetString(Section, Key, Value, GGameIni))
-		{
-			return false;
-		}
-
-		Value = Value.TrimStartAndEnd();
-		if (Value.IsEmpty())
-		{
-			return false;
-		}
-
-		OutValue = Value;
-		return true;
-	}
-
-	bool TryReadDTCoreRuntimeOverride(const TCHAR* Key, FString& OutValue)
-	{
-		// 1순위: 패키징 후 사용자가 직접 수정하기 쉬운 별도 override 섹션
-		if (TryReadGameIniString(DTCoreRuntimeOverrideSection, Key, OutValue))
-		{
-			return true;
-		}
-
-		// 2순위: 기존 UDeveloperSettings 섹션에 직접 값을 넣은 경우도 지원
-		return TryReadGameIniString(DTCoreSettingsSection, Key, OutValue);
-	}
-
-	void EnsureDTCoreRuntimeOverrideTemplate()
-	{
-		if (!GConfig)
-		{
-			return;
-		}
-
-		static const TCHAR* Keys[] =
-		{
-			TEXT("BaseApiUrl"),
-			TEXT("LocalApiUrl"),
-			TEXT("TestApiUrl"),
-			TEXT("ProdApiUrl"),
-			TEXT("WebSocketUrl"),
-			TEXT("WebSocketLogin"),
-			TEXT("WebSocketPasscode")
-		};
-
-		bool bChanged = false;
-		for (const TCHAR* Key : Keys)
-		{
-			FString ExistingValue;
-			if (!GConfig->GetString(DTCoreRuntimeOverrideSection, Key, ExistingValue, GGameIni))
-			{
-				// 값은 일부러 비워둔다. 운영/개발자가 패키징 후 필요한 값만 채우면 된다.
-				GConfig->SetString(DTCoreRuntimeOverrideSection, Key, TEXT(""), GGameIni);
-				bChanged = true;
-			}
-		}
-
-		if (bChanged)
-		{
-			GConfig->Flush(false, GGameIni);
-		}
-	}
-}
 
 UDxApiSubsystem::UDxApiSubsystem()
 {
@@ -99,7 +22,7 @@ void UDxApiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
-	EnsureDTCoreRuntimeOverrideTemplate();
+	DTCoreRuntimeConfig::EnsureRuntimeOverrideTemplate();
 	HttpModule = &FHttpModule::Get();
 }
 
@@ -320,7 +243,7 @@ FString UDxApiSubsystem::GetServerUrl(EApiType ApiType) const
 	}
 
 	FString RuntimeOverride;
-	if (TryReadDTCoreRuntimeOverride(*ConfigKey, RuntimeOverride))
+	if (DTCoreRuntimeConfig::TryReadRuntimeOverride(*ConfigKey, RuntimeOverride))
 	{
 		return RuntimeOverride;
 	}
