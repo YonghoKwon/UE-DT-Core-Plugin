@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "HAL/ThreadSafeBool.h"
 #include "HAL/ThreadSafeCounter.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "DxDataSubsystem.generated.h"
@@ -24,7 +25,7 @@ public:
 
 	virtual void Tick(float DeltaTime) override;
 	virtual TStatId GetStatId() const override;
-	virtual bool IsTickable() const override { return !IsTemplate(); }
+	virtual bool IsTickable() const override { return !IsTemplate() && !bIsShuttingDown; }
 
 	UFUNCTION(Category = "DxData")
 	void EnqueueApiData(const FString& DataFromApi);
@@ -65,6 +66,13 @@ private:
 	// int32 TotalProcessedCount = 0; // 처리된 총 개수
 	// 디버그용 전체 처리된 데이터 개수를 세는 카운터
 	FThreadSafeCounter TotalProcessedCount;
+
+	// 백그라운드 작업이 Tick마다 중복 생성되는 것을 막기 위한 플래그
+	FThreadSafeBool bApiProcessing = false;
+	FThreadSafeBool bWebSocketProcessing = false;
+
+	// Deinitialize 이후 백그라운드 작업이 UObject/핸들러를 건드리지 않도록 보호
+	FThreadSafeBool bIsShuttingDown = false;
 protected:
 	// TSharedPtr<TMap<FString, TSubclassOf<UApiMessage>>> CachedHandlerApiMessageMap;
 	// TSharedPtr<TMap<FString, TSubclassOf<UTransactionCodeMessage>>> CachedHandlerTransactionCodeMessageMap;
