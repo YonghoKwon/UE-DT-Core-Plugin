@@ -1,5 +1,6 @@
 ﻿#include "Core/DTCoreRuntimeConfig.h"
 
+#include "Misc/App.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -21,6 +22,43 @@ namespace DTCoreRuntimeConfig
 			TEXT("WebSocketLogin"),
 			TEXT("WebSocketPasscode")
 		};
+
+		FString NormalizeRuntimePath(const FString& Path)
+		{
+			FString NormalizedPath = FPaths::ConvertRelativePathToFull(Path);
+			FPaths::NormalizeFilename(NormalizedPath);
+			return NormalizedPath;
+		}
+
+		void AddUniqueRuntimePath(TArray<FString>& Paths, const FString& Path)
+		{
+			if (Path.IsEmpty())
+			{
+				return;
+			}
+
+			const FString NormalizedPath = NormalizeRuntimePath(Path);
+			Paths.AddUnique(NormalizedPath);
+		}
+
+		TArray<FString> GetRuntimeConfigCandidatePaths()
+		{
+			TArray<FString> Paths;
+
+			// 1순위: Unreal이 계산한 ProjectDir 기준. 패키징에서는 보통 <PackageRoot>/<ProjectName>/ 를 가리킨다.
+			AddUniqueRuntimePath(Paths, FPaths::ProjectDir() / TEXT("Config") / TEXT("Game.ini"));
+
+			// 2순위: 실행 파일 폴더가 프로젝트 루트인 경우.
+			AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / TEXT("Config") / TEXT("Game.ini"));
+
+			// 3순위: 실행 파일 폴더가 <ProjectName>/Binaries/Win64 또는 <ProjectName>/Binaries/Linux 인 경우.
+			AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / TEXT("../../Config/Game.ini"));
+
+			// 4순위: 실행 파일 폴더가 패키지 루트(예: Windows/)인 경우.
+			AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / FApp::GetProjectName() / TEXT("Config") / TEXT("Game.ini"));
+
+			return Paths;
+		}
 
 		bool TryReadConfigFileString(const FString& IniPath, const TCHAR* Section, const TCHAR* Key, FString& OutValue)
 		{
@@ -134,35 +172,35 @@ namespace DTCoreRuntimeConfig
 
 	FString GetEditableRuntimeConfigPath()
 	{
-		// 패키징된 Windows 구조 기준:
-		// Windows/<ProjectName>/Config/Game.ini
-		// LaunchDir()는 보통 Windows/ 를 가리키므로 ProjectName 폴더를 붙여준다.
-		return FPaths::LaunchDir() / FApp::GetProjectName() / TEXT("Config") / TEXT("Game.ini");
+		const TArray<FString> CandidatePaths = GetRuntimeConfigCandidatePaths();
+		return CandidatePaths.Num() > 0 ? CandidatePaths[0] : FString();
 	}
 
 	bool TryReadRuntimeOverride(const TCHAR* Key, FString& OutValue)
 	{
-		const FString EditableRuntimeIni = GetEditableRuntimeConfigPath();
+		const TArray<FString> CandidatePaths = GetRuntimeConfigCandidatePaths();
 
-		// 1순위: 패키징 폴더에서 직접 수정하기 쉬운 외부 Game.ini
-		if (TryReadConfigFileString(EditableRuntimeIni, RuntimeOverrideSection, Key, OutValue))
+		// 1순위: 패키징 폴더에서 직접 수정하기 쉬운 외부 Game.ini 후보들.
+		for (const FString& RuntimeIniPath : CandidatePaths)
 		{
-			return true;
+			if (TryReadConfigFileString(RuntimeIniPath, RuntimeOverrideSection, Key, OutValue))
+			{
+				return true;
+			}
+
+			if (TryReadConfigFileString(RuntimeIniPath, SettingsSection, Key, OutValue))
+			{
+				return true;
+			}
 		}
 
-		// 2순위: 외부 Game.ini에 UDeveloperSettings 섹션으로 값을 넣은 경우도 지원
-		if (TryReadConfigFileString(EditableRuntimeIni, SettingsSection, Key, OutValue))
-		{
-			return true;
-		}
-
-		// 3순위: Unreal이 관리하는 GGameIni override 섹션
+		// 2순위: Unreal이 관리하는 GGameIni override 섹션.
 		if (TryReadGGameIniString(RuntimeOverrideSection, Key, OutValue))
 		{
 			return true;
 		}
 
-		// 4순위: 기존 UDeveloperSettings 섹션에 직접 값을 넣은 경우도 지원
+		// 3순위: 기존 UDeveloperSettings 섹션에 직접 값을 넣은 경우도 지원.
 		return TryReadGGameIniString(SettingsSection, Key, OutValue);
 	}
 
@@ -170,6 +208,9 @@ namespace DTCoreRuntimeConfig
 	{
 		// Unreal ConfigCache 경로와 패키징 폴더의 외부 편집용 Game.ini 둘 다 생성/보강한다.
 		EnsureTemplateInConfigCache();
+
+		// 생성은 대표 경로(ProjectDir/Config/Game.ini)에 수행한다.
+		// 읽기는 TryReadRuntimeOverride에서 여러 후보 경로를 모두 확인한다.
 		EnsureTemplateInEditableFile(GetEditableRuntimeConfigPath());
 	}
 }
