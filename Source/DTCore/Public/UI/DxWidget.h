@@ -39,9 +39,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "DxWidget")
 	void CloseWidget();
-	void CloseWidgetAddLogic_Implementation();
 
-	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DxWidget")
+	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "DxWidget")
 	void CloseWidgetAddLogic();
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DxWidget")
