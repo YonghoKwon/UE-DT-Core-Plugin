@@ -12,50 +12,50 @@ class DTCORE_API UDTCoreSettings : public UDeveloperSettings
 
 public:
 	// API 데이터 테이블 경로 설정
-	UPROPERTY(Config, EditAnywhere, Category = "Data Management")
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|DataTable")
 	TSoftObjectPtr<UDataTable> ApiDataTable;
 	// WebSocket 데이터 테이블 경로 설정
-	UPROPERTY(Config, EditAnywhere, Category = "Data Management")
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|DataTable")
 	TSoftObjectPtr<UDataTable> WebSocketDataTable;
 	// Level 데이터 테이블 경로 설정
-	UPROPERTY(Config, EditAnywhere, Category = "Data Management")
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|DataTable")
 	TSoftObjectPtr<UDataTable> LevelDataTable;
 
-	UPROPERTY(Config, EditAnywhere, Category = "3D Objects")
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Object")
 	TMap<FString, TObjectPtr<UClass>> ObjectBPClasses;
 
-	UPROPERTY(Config, EditAnywhere, Category = "Data Management")
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|DataTable")
 	TSoftObjectPtr<UDataTable> ShipObjectNameDataTable;
 
-	UPROPERTY(Config, EditAnywhere, Category = "Network")
-	FString WebSocketUrl = "ws://172.18.45.234:61616";
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket")
+	FString WebSocketUrl = TEXT("ws://localhost:61616");
+
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket")
+	FString WebSocketLogin = TEXT("artemis");
+
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket")
+	FString WebSocketPasscode = TEXT("artemis");
 
 	// API 기본 URL
-	UPROPERTY(Config, EditAnywhere, Category = "Network")
-	FString BaseApiUrl = "http://localhost:8090";
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|API")
+	FString BaseApiUrl = TEXT("http://localhost:8090");
 
-	UPROPERTY(Config, EditAnywhere, Category = "Network")
-	FString LocalApiUrl = "http://172.31.247.114:8090";
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|API")
+	FString LocalApiUrl = TEXT("http://localhost:8090");
 
-	UPROPERTY(Config, EditAnywhere, Category = "Network")
-	FString TestApiUrl = "http://172.18.45.234:8000";
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|API")
+	FString TestApiUrl = TEXT("");
 
-	UPROPERTY(Config, EditAnywhere, Category = "Network")
-	FString ProdApiUrl = "http://172.18.46.164:8000";
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|API")
+	FString ProdApiUrl = TEXT("");
 
-	UPROPERTY(Config, EditAnywhere, Category = "Network|Topics")
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|Topics")
 	TArray<FString> WebSocketTopics = { TEXT("topic.cep.output.0") };
 
-	UPROPERTY(Config, EditAnywhere, Category = "Network|Topics")
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|Topics")
 	TArray<FString> ApiTopics = { TEXT("topic.api.output.0") };
 
 	// 프로젝트 전체에서 기본으로 사용할 위젯 테마 데이터
-	UPROPERTY(Config, EditAnywhere, Category = "UI")
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|UI")
 	TSoftObjectPtr<class UDxWidgetThemeData> DefaultWidgetTheme;
-private:
-protected:
-
-public:
-private:
-protected:
 };
