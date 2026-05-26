@@ -103,7 +103,7 @@ void UDxWidget::CloseWidget()
 		if (UDxWidgetSubsystem* WidgetSubsystem = GI->GetSubsystem<UDxWidgetSubsystem>())
 		{
 			WidgetSubsystem->CloseWidget(this);
-			CloseWidgetAddLogic();
+			CloseWidgetAddLogic_Implementation();
 		}
 		else
 		{
@@ -116,6 +116,11 @@ void UDxWidget::CloseWidget()
 		UE_LOG(LogBase, Warning, TEXT("DxWidget::CloseWidget - GameInstance is null, removing from parent directly"));
 		RemoveFromParent();
 	}
+}
+
+void UDxWidget::CloseWidgetAddLogic_Implementation()
+{
+	// 자식 클래스에서 오버라이드하여 구현 (닫을 때 세부 로직이 필요할 경우)
 }
 
 void UDxWidget::RetryWidget_Implementation()
