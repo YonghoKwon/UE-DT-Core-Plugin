@@ -68,10 +68,7 @@ namespace DTCoreRuntimeConfig
 			}
 
 			FConfigFile RuntimeConfig;
-			if (!RuntimeConfig.Read(IniPath))
-			{
-				return false;
-			}
+			RuntimeConfig.Read(IniPath);
 
 			FString Value;
 			if (!RuntimeConfig.GetString(Section, Key, Value))
