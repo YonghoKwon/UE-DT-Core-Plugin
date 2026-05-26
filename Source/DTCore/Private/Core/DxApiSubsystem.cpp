@@ -5,6 +5,84 @@
 #include "HttpModule.h"
 #include "Core/DTCoreSettings.h"
 #include "Interfaces/IHttpResponse.h"
+#include "Misc/ConfigCacheIni.h"
+
+namespace
+{
+	constexpr const TCHAR* DTCoreRuntimeOverrideSection = TEXT("DTCoreRuntimeOverride");
+	constexpr const TCHAR* DTCoreSettingsSection = TEXT("/Script/DTCore.DTCoreSettings");
+
+	bool TryReadGameIniString(const TCHAR* Section, const TCHAR* Key, FString& OutValue)
+	{
+		if (!GConfig)
+		{
+			return false;
+		}
+
+		FString Value;
+		if (!GConfig->GetString(Section, Key, Value, GGameIni))
+		{
+			return false;
+		}
+
+		Value = Value.TrimStartAndEnd();
+		if (Value.IsEmpty())
+		{
+			return false;
+		}
+
+		OutValue = Value;
+		return true;
+	}
+
+	bool TryReadDTCoreRuntimeOverride(const TCHAR* Key, FString& OutValue)
+	{
+		// 1순위: 패키징 후 사용자가 직접 수정하기 쉬운 별도 override 섹션
+		if (TryReadGameIniString(DTCoreRuntimeOverrideSection, Key, OutValue))
+		{
+			return true;
+		}
+
+		// 2순위: 기존 UDeveloperSettings 섹션에 직접 값을 넣은 경우도 지원
+		return TryReadGameIniString(DTCoreSettingsSection, Key, OutValue);
+	}
+
+	void EnsureDTCoreRuntimeOverrideTemplate()
+	{
+		if (!GConfig)
+		{
+			return;
+		}
+
+		static const TCHAR* Keys[] =
+		{
+			TEXT("BaseApiUrl"),
+			TEXT("LocalApiUrl"),
+			TEXT("TestApiUrl"),
+			TEXT("ProdApiUrl"),
+			TEXT("WebSocketUrl"),
+			TEXT("WebSocketLogin"),
+			TEXT("WebSocketPasscode")
+		};
+
+		bool bChanged = false;
+		for (const TCHAR* Key : Keys)
+		{
+			FString ExistingValue;
+			if (!GConfig->GetString(DTCoreRuntimeOverrideSection, Key, ExistingValue, GGameIni))
+			{
+				// 값은 일부러 비워둔다. 운영/개발자가 패키징 후 필요한 값만 채우면 된다.
+				GConfig->SetString(DTCoreRuntimeOverrideSection, Key, TEXT(""), GGameIni);
+				bChanged = true;
+			}
+		}
+
+		if (bChanged)
+		{
+			GConfig->Flush(false, GGameIni);
+		}
+	}
+}
 
 UDxApiSubsystem::UDxApiSubsystem()
 {
@@ -20,6 +98,7 @@ void UDxApiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
+	EnsureDTCoreRuntimeOverrideTemplate();
 	HttpModule = &FHttpModule::Get();
 }
 
@@ -212,21 +291,45 @@ void UDxApiSubsystem::InternalOnResponseReceived(FHttpRequestPtr Request, FHttpR
 
 FString UDxApiSubsystem::GetServerUrl(EApiType ApiType) const
 {
-	// 1. DTCoreSettings에서 ApiType별 URL을 읽는다.
-	// 프로젝트별/환경별 URL은 DefaultGame.ini 또는 Project Settings의 DTCore Settings에서 설정한다.
+	// 1. Game.ini override 값을 먼저 읽는다. 값이 비어 있으면 무시한다.
+	// 패키징 후 생성되는 [DTCoreRuntimeOverride] 섹션에 값을 채우면 재패키징 없이 URL을 바꿀 수 있다.
+	FString ConfigKey;
+	FString SettingsValue;
+
 	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
-	if (ensure(Settings))
+
+	switch (ApiType)
 	{
-		switch (ApiType)
-		{
-		case EApiType::Local: return Settings->LocalApiUrl.IsEmpty() ? Settings->BaseApiUrl : Settings->LocalApiUrl;
-		case EApiType::Test: return Settings->TestApiUrl.IsEmpty() ? Settings->BaseApiUrl : Settings->TestApiUrl;
-		case EApiType::Prod: return Settings->ProdApiUrl.IsEmpty() ? Settings->BaseApiUrl : Settings->ProdApiUrl;
-		default: return Settings->BaseApiUrl;
-		}
+	case EApiType::Local:
+		ConfigKey = TEXT("LocalApiUrl");
+		SettingsValue = Settings ? Settings->LocalApiUrl : TEXT("");
+		break;
+	case EApiType::Test:
+		ConfigKey = TEXT("TestApiUrl");
+		SettingsValue = Settings ? Settings->TestApiUrl : TEXT("");
+		break;
+	case EApiType::Prod:
+		ConfigKey = TEXT("ProdApiUrl");
+		SettingsValue = Settings ? Settings->ProdApiUrl : TEXT("");
+		break;
+	default:
+		ConfigKey = TEXT("BaseApiUrl");
+		SettingsValue = Settings ? Settings->BaseApiUrl : TEXT("");
+		break;
 	}
 
-	return TEXT("http://localhost:8090");
+	FString RuntimeOverride;
+	if (TryReadDTCoreRuntimeOverride(*ConfigKey, RuntimeOverride))
+	{
+		return RuntimeOverride;
+	}
+
+	if (!SettingsValue.IsEmpty())
+	{
+		return SettingsValue;
+	}
+
+	return Settings && !Settings->BaseApiUrl.IsEmpty() ? Settings->BaseApiUrl : TEXT("http://localhost:8090");
 }
 
 FString UDxApiSubsystem::GetHttpStr(EApiMethod ApiMethod) const
