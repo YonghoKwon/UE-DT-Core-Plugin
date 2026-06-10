@@ -65,5 +65,6 @@ public:
 	const TMap<FString, TObjectPtr<AActor>>* GetCategoryMap(FName Category) const;
 
 private:
+	// 게임 스레드 전용. 동기화 없이 접근하므로 백그라운드 스레드에서 사용 금지
 	TMap<FName, TMap<FString, TObjectPtr<AActor>>> RegisteredObjects;
 };
