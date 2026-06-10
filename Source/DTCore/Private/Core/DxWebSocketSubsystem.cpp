@@ -336,6 +336,15 @@ void UDxWebSocketSubsystem::TryReconnect()
 		return;
 	}
 
+	// 최대 재시도 횟수 초과 시 중단 (0 = 무제한)
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+	const int32 MaxAttempts = Settings ? Settings->MaxReconnectAttempts : 10;
+	if (MaxAttempts > 0 && RetryCount >= MaxAttempts)
+	{
+		DX_LOG(GetWorld(), TEXT("TryReconnect: 최대 재시도 횟수(%d) 초과 - 재연결 중단. ConnectWebSocket() 호출로 수동 재시도 가능"), MaxAttempts);
+		return;
+	}
+
 	float CurrentDelay = InitialRetryDelay * FMath::Pow(BackoffMultiplier, static_cast<float>(RetryCount));
 	CurrentDelay = FMath::Min(CurrentDelay, MaxRetryDelay);
 

@@ -36,6 +36,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket")
 	FString WebSocketPasscode = TEXT("artemis");
 
+	// WebSocket 재연결 최대 시도 횟수 (0 = 무제한)
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket", meta = (ClampMin = "0"))
+	int32 MaxReconnectAttempts = 10;
+
 	// API 기본 URL
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|API")
 	FString BaseApiUrl = TEXT("http://localhost:8090");
