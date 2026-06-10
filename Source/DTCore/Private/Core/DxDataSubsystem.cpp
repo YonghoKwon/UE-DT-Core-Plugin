@@ -11,27 +11,27 @@
 
 struct FApiStruct;
 
-UDxDataSubsystem::UDxDataSubsystem()
-{
-	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
-
-	if (Settings->ApiDataTable.ToSoftObjectPath().IsValid())
-	{
-		ApiDataTable = Settings->ApiDataTable.LoadSynchronous();
-	}
-
-	if (Settings->WebSocketDataTable.ToSoftObjectPath().IsValid())
-	{
-		WebSocketDataTable = Settings->WebSocketDataTable.LoadSynchronous();
-	}
-}
-
 void UDxDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 	bIsShuttingDown = false;
 	bApiProcessing = false;
 	bWebSocketProcessing = false;
+
+	// CDO 생성자에서의 에셋 로드는 쿠킹/시작 히치 위험이 있어 Initialize에서 수행
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+	if (Settings)
+	{
+		if (Settings->ApiDataTable.ToSoftObjectPath().IsValid())
+		{
+			ApiDataTable = Settings->ApiDataTable.LoadSynchronous();
+		}
+
+		if (Settings->WebSocketDataTable.ToSoftObjectPath().IsValid())
+		{
+			WebSocketDataTable = Settings->WebSocketDataTable.LoadSynchronous();
+		}
+	}
 
 	if (ApiDataTable)
 	{

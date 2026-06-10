@@ -18,8 +18,6 @@ class DTCORE_API UDxDataSubsystem : public UGameInstanceSubsystem, public FTicka
 
 	// Function
 public:
-	UDxDataSubsystem();
-
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 

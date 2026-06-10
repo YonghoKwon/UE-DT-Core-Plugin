@@ -9,19 +9,16 @@
 #include "UI/DxWidget.h"
 #include "UI/DxWidgetConfigData.h"
 
-UDxWidgetSubsystem::UDxWidgetSubsystem()
-{
-	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
-
-	if (Settings->LevelDataTable.ToSoftObjectPath().IsValid())
-	{
-		LevelDataTable = Settings->LevelDataTable.LoadSynchronous();
-	}
-}
-
 void UDxWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+
+	// CDO 생성자에서의 에셋 로드는 쿠킹/시작 히치 위험이 있어 Initialize에서 수행
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+	if (Settings && Settings->LevelDataTable.ToSoftObjectPath().IsValid())
+	{
+		LevelDataTable = Settings->LevelDataTable.LoadSynchronous();
+	}
 }
 
 void UDxWidgetSubsystem::Deinitialize()

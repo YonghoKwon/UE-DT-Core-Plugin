@@ -9,19 +9,16 @@
 #include "Interfaces/IHttpResponse.h"
 #include "TimerManager.h"
 
-UDxApiSubsystem::UDxApiSubsystem()
-{
-	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
-
-	if (Settings->ApiDataTable.ToSoftObjectPath().IsValid())
-	{
-		ApiDataTable = Settings->ApiDataTable.LoadSynchronous();
-	}
-}
-
 void UDxApiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+
+	// CDO 생성자에서의 에셋 로드는 쿠킹/시작 히치 위험이 있어 Initialize에서 수행
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+	if (Settings && Settings->ApiDataTable.ToSoftObjectPath().IsValid())
+	{
+		ApiDataTable = Settings->ApiDataTable.LoadSynchronous();
+	}
 
 	DTCoreRuntimeConfig::EnsureRuntimeOverrideTemplate();
 	HttpModule = &FHttpModule::Get();

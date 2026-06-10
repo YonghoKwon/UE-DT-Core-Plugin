@@ -17,8 +17,6 @@ class DTCORE_API UDxWidgetSubsystem : public UGameInstanceSubsystem, public FTic
 
 	// Function
 public:
-	UDxWidgetSubsystem();
-
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 

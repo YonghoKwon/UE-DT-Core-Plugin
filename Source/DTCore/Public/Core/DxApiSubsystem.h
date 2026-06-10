@@ -22,7 +22,6 @@ class DTCORE_API UDxApiSubsystem : public UGameInstanceSubsystem
 
 	// Function
 public:
-	UDxApiSubsystem();
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
