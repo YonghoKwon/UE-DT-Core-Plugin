@@ -23,7 +23,6 @@ class DTCORE_API AInteractableActor : public AActor
 
 public:
 	AInteractableActor();
-	virtual void Tick(float DeltaTime) override;
 
 	UFUNCTION(BlueprintCallable, Category = "InteractableActor")
 	virtual void Click();

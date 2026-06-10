@@ -5,7 +5,10 @@
 
 ADxLevelManagerBase::ADxLevelManagerBase()
 {
+	// 베이스는 Tick을 사용하지 않음. Tick이 필요한 파생 클래스는
+	// SetActorTickEnabled(true)로 직접 활성화할 것
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false;
 }
 
 void ADxLevelManagerBase::BeginPlay()
@@ -39,11 +42,5 @@ void ADxLevelManagerBase::SetupForLevel()
 
 void ADxLevelManagerBase::CleanupForLevel()
 {
-}
-
-// Called every frame
-void ADxLevelManagerBase::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
 }
 

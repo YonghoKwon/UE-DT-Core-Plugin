@@ -471,3 +471,4 @@ ParseToStruct 내부에서는 UObject/GameThread 전용 작업을 하지 않기
 - Linux 패키징은 실행 방식에 따라 `LaunchDir`가 달라질 수 있으므로 실제 생성 경로를 확인해야 합니다.
 - `ParseToStruct()` 내부에서 Actor/Component/Blueprint 접근을 하면 스레드 안정성 문제가 생길 수 있습니다.
 - Public Header에 불필요한 의존성이 늘어나면 DTCore를 사용하는 프로젝트의 빌드 의존성도 커질 수 있습니다.
+- Base 클래스(`DataSyncCompBase`, `StatusVisualizerCompBase`, `MechDriverCompBase`, `DxLevelManagerBase`, `InteractableActor`)는 기본적으로 Tick이 꺼진 상태로 시작합니다(`bStartWithTickEnabled = false`). Tick이 필요한 파생 클래스/Blueprint는 `SetComponentTickEnabled(true)` 또는 `SetActorTickEnabled(true)`를 직접 호출해야 합니다.
