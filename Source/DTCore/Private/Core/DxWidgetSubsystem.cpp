@@ -62,7 +62,14 @@ void UDxWidgetSubsystem::SwitchUIMode(EDxViewMode NewMode)
 	// 3. 새 메인 위젯 띄우기
 	if (MainWidgetClass)
 	{
-		MainWidgetInstance = CreateWidget<UDxWidget>(GetWorld(), MainWidgetClass);
+		UWorld* World = GetWorld();
+		if (!World)
+		{
+			DX_LOG(GetWorld(), TEXT("SwitchUIMode: World가 유효하지 않음"));
+			return;
+		}
+
+		MainWidgetInstance = CreateWidget<UDxWidget>(World, MainWidgetClass);
 		if (MainWidgetInstance)
 		{
 			MainWidgetInstance->AddToViewport();
@@ -208,7 +215,10 @@ UDxWidget* UDxWidgetSubsystem::CreateWidgetInternal(TSubclassOf<UDxWidget> Widge
 	if (!Panel) return nullptr;
 
 	// 3. 생성
-	UDxWidget* NewWidget = CreateWidget<UDxWidget>(GetWorld(), WidgetClass);
+	UWorld* World = GetWorld();
+	if (!World) return nullptr;
+
+	UDxWidget* NewWidget = CreateWidget<UDxWidget>(World, WidgetClass);
 	if (!NewWidget) return nullptr;
 
 	// 4. 패널에 추가 및 위치 설정
