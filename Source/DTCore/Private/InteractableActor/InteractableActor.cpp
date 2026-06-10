@@ -67,7 +67,7 @@ void AInteractableActor::OnCursorUnhover()
 	LastHoveredComponent = nullptr;
 }
 
-void AInteractableActor::HighlightActor(bool activate, const TArray<UPrimitiveComponent*> meshes, bool isError)
+void AInteractableActor::HighlightActor(bool activate, const TArray<UPrimitiveComponent*>& meshes, bool isError)
 {
 	// [최적화] 루프 밖에서 로그 한 번만 출력 (디버깅 필요시에만 주석 해제)
 	// UE_LOG(LogBase, Verbose, TEXT("HighlightActor: Activate=%d, MeshCount=%d"), activate, meshes.Num());
