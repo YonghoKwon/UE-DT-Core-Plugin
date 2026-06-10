@@ -194,33 +194,40 @@ void UDxDataSubsystem::ProcessApiQueue()
 
             for (const FString& SingleData : BatchDataChunk)
             {
-	            if (JsonParser.JsonParse(SingleData))
+	            if (!JsonParser.JsonParse(SingleData))
 	            {
-		            yyjson_val* Root = JsonParser.GetRoot();
-		            yyjson_val* MetaNode = JsonParser.JsonParseKeyword(Root, TEXT("meta"));
+		            // 백그라운드 스레드이므로 DX_LOG(GetWorld(), ...) 대신 UE_LOG 사용
+		            UE_LOG(LogBase, Warning, TEXT("ProcessApiQueue: JSON 파싱 실패 - Payload(256자): %s"), *SingleData.Left(256));
+		            continue;
+	            }
 
-		            if (JsonParser.IsValid(MetaNode))
+	            yyjson_val* Root = JsonParser.GetRoot();
+	            yyjson_val* MetaNode = JsonParser.JsonParseKeyword(Root, TEXT("meta"));
+
+	            if (!JsonParser.IsValid(MetaNode))
+	            {
+		            UE_LOG(LogBase, Warning, TEXT("ProcessApiQueue: 'meta' 노드 없음 - Payload(256자): %s"), *SingleData.Left(256));
+		            continue;
+	            }
+
+	            FString Resource = JsonParser.
+		            GetString(JsonParser.JsonParseKeyword(MetaNode, TEXT("resource")));
+	            FString Action = JsonParser.GetString(JsonParser.JsonParseKeyword(MetaNode, TEXT("action")));
+
+	            // Key (Resource_Action)
+	            FString Key = FPaths::Combine(Resource, Action);
+
+	            if (UApiMessage** HandlerPtr = SharedMap->Find(Key))
+	            {
+		            UApiMessage* Handler = *HandlerPtr;
+		            if (IsValid(Handler))
 		            {
-			            FString Resource = JsonParser.
-				            GetString(JsonParser.JsonParseKeyword(MetaNode, TEXT("resource")));
-			            FString Action = JsonParser.GetString(JsonParser.JsonParseKeyword(MetaNode, TEXT("action")));
+			            // [중요] ParseToStruct 함수는 내부에서 NewObject 등을 쓰지 않는 순수 로직이어야 함
+			            TSharedPtr<FApiDataBase> ParsedData = Handler->ParseToStruct(SingleData);
 
-			            // Key (Resource_Action)
-			            FString Key = FPaths::Combine(Resource, Action);
-
-			            if (UApiMessage** HandlerPtr = SharedMap->Find(Key))
+			            if (ParsedData.IsValid())
 			            {
-				            UApiMessage* Handler = *HandlerPtr;
-				            if (IsValid(Handler))
-				            {
-					            // [중요] ParseToStruct 함수는 내부에서 NewObject 등을 쓰지 않는 순수 로직이어야 함
-					            TSharedPtr<FApiDataBase> ParsedData = Handler->ParseToStruct(SingleData);
-
-					            if (ParsedData.IsValid())
-					            {
-						            BatchResults.Add({Handler, ParsedData});
-					            }
-				            }
+				            BatchResults.Add({Handler, ParsedData});
 			            }
 		            }
 	            }
@@ -313,28 +320,35 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 
 			for (const FString& SingleData : BatchDataChunk)
 			{
-				if (JsonParser.JsonParse(SingleData))
+				if (!JsonParser.JsonParse(SingleData))
 				{
-					yyjson_val* Root = JsonParser.GetRoot();
-					yyjson_val* MsgIdVal = JsonParser.JsonParseKeyword(Root, TEXT("MESSAGE_ID"));
+					// 백그라운드 스레드이므로 DX_LOG(GetWorld(), ...) 대신 UE_LOG 사용
+					UE_LOG(LogBase, Warning, TEXT("ProcessWebSocketQueue: JSON 파싱 실패 - Payload(256자): %s"), *SingleData.Left(256));
+					continue;
+				}
 
-					if (JsonParser.IsValid(MsgIdVal))
+				yyjson_val* Root = JsonParser.GetRoot();
+				yyjson_val* MsgIdVal = JsonParser.JsonParseKeyword(Root, TEXT("MESSAGE_ID"));
+
+				if (!JsonParser.IsValid(MsgIdVal))
+				{
+					UE_LOG(LogBase, Warning, TEXT("ProcessWebSocketQueue: 'MESSAGE_ID' 노드 없음 - Payload(256자): %s"), *SingleData.Left(256));
+					continue;
+				}
+
+				FString TrCode = JsonParser.GetString(MsgIdVal);
+
+				if (UTransactionCodeMessage** HandlerPtr = SharedMap->Find(TrCode))
+				{
+					UTransactionCodeMessage* Handler = *HandlerPtr;
+					if (IsValid(Handler))
 					{
-						FString TrCode = JsonParser.GetString(MsgIdVal);
+						// [중요] ParseToStruct 함수는 내부에서 NewObject 등을 쓰지 않는 순수 로직이어야 함
+						TSharedPtr<FTransactionCodeDataBase> ParsedData = Handler->ParseToStruct(SingleData);
 
-						if (UTransactionCodeMessage** HandlerPtr = SharedMap->Find(TrCode))
+						if (ParsedData.IsValid())
 						{
-							UTransactionCodeMessage* Handler = *HandlerPtr;
-							if (IsValid(Handler))
-							{
-								// [중요] ParseToStruct 함수는 내부에서 NewObject 등을 쓰지 않는 순수 로직이어야 함
-								TSharedPtr<FTransactionCodeDataBase> ParsedData = Handler->ParseToStruct(SingleData);
-
-								if (ParsedData.IsValid())
-								{
-									BatchResults.Add({ Handler, ParsedData });
-								}
-							}
+							BatchResults.Add({ Handler, ParsedData });
 						}
 					}
 				}
@@ -371,16 +385,6 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 		bWebSocketProcessing = false;
 	}
 
-    // 화면 디버깅
-    // if (GEngine)
-    // {
-    //     GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Green,
-    //         FString::Printf(TEXT("Total Processed: %d"), TotalProcessedCount.GetValue()));
-    // }
-
-	const FString Timestamp = FDateTime::Now().ToString(TEXT("%Y.%m.%d-%H:%M:%S.%s"));
-	// UE_LOG(LogBase, Log, TEXT("Received Message at: %s"), *Timestamp);
-	// UE_LOG(LogBase, Log, TEXT("Total Processed: %d"), TotalProcessedCount.GetValue());
 }
 
 UApiMessage* UDxDataSubsystem::GetOrLoadApiHandler(UClass* HandlerClass)
