@@ -181,7 +181,7 @@ void UDxWebSocketSubsystem::ReceivedMessage(const FWebSocketMessage& Message)
 		DS->EnqueueWebSocketData(BodyString);
 		break;
 	case ETopicRouteType::Api:
-		DS->EnqueueApiData(BodyString);
+		DS->EnqueueWebSocketData(BodyString);
 		break;
 	}
 }
