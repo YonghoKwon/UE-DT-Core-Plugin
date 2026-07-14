@@ -18,8 +18,6 @@ class DTCORE_API UDxDataSubsystem : public UGameInstanceSubsystem, public FTicka
 
 	// Function
 public:
-	UDxDataSubsystem();
-
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
@@ -74,9 +72,11 @@ private:
 	// Deinitialize 이후 백그라운드 작업이 UObject/핸들러를 건드리지 않도록 보호
 	FThreadSafeBool bIsShuttingDown = false;
 protected:
-	// TSharedPtr<TMap<FString, TSubclassOf<UApiMessage>>> CachedHandlerApiMessageMap;
-	// TSharedPtr<TMap<FString, TSubclassOf<UTransactionCodeMessage>>> CachedHandlerTransactionCodeMessageMap;
-
+	// 백그라운드 스레드와 공유되는 핸들러 조회 맵.
+	// - 내부의 raw 포인터는 위의 UPROPERTY 맵(ApiMessageMap/TransactionCodeMessageMap)이
+	//   동일 인스턴스를 GC 루팅하고 있어 서브시스템 수명 동안 유효함이 보장된다.
+	// - Initialize에서 채운 뒤에는 불변으로 취급할 것 (수정 금지, 교체는 Reset 후 재생성만 허용).
+	//   백그라운드 작업은 bIsShuttingDown과 TSharedPtr 유효성 체크로 보호된다.
 	TSharedPtr<TMap<FString, UApiMessage*>> CachedHandlerApiMessageMap;
 
 	TSharedPtr<TMap<FString, UTransactionCodeMessage*>> CachedHandlerTransactionCodeMessageMap;

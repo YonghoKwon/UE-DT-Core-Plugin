@@ -117,8 +117,8 @@ STOMP WebSocket 연결, 구독, 수신 메시지 라우팅을 담당합니다.
 
 - `WebSocketUrl`, Login, Passcode 기반 STOMP 연결
 - 연결 성공 후 Topic 자동 구독
-- 연결 오류/종료 시 재연결 시도
-- Topic 종류에 따라 API Queue 또는 WebSocket Queue로 라우팅
+- 연결 오류/종료 시 지수 백오프 재연결 (`MaxReconnectAttempts`로 최대 횟수 제한, 0 = 무제한)
+- 등록된 Topic 수신 데이터를 `UDxDataSubsystem` Queue로 전달
 - 수신 메시지를 GameThread에서 안전하게 Delegate 실행
 
 Topic 라우팅 기준:
@@ -126,7 +126,11 @@ Topic 라우팅 기준:
 | 설정 | 처리 |
 |---|---|
 | `WebSocketTopics` | `UDxDataSubsystem::EnqueueWebSocketData` |
-| `ApiTopics` | `UDxDataSubsystem::EnqueueApiData` |
+| `ApiTopics` | `UDxDataSubsystem::EnqueueWebSocketData` |
+
+> 참고: 현재 코드 기준으로 `ApiTopics`도 WebSocket Queue(`EnqueueWebSocketData`)로 적재됩니다.
+> 두 설정 모두 구독 대상 Topic 목록으로 사용되며, 큐 분리는 적용되지 않습니다.
+> 관련 배경은 `docs/ANALYSIS.md` 4.1절을 참고하세요.
 
 ---
 
@@ -264,6 +268,22 @@ Runtime 로그를 파일로 저장하는 Subsystem입니다.
 
 ---
 
+### 4.8 `UDxProcessSubsystem`
+
+ComponentId 기준으로 ActorComponent를 등록/조회하는 Registry Subsystem입니다.
+
+주요 함수:
+
+```cpp
+RegisterComponent(...)
+UnregisterComponent(...)
+FindComponent(...)
+```
+
+`FindComponent`는 조회 시 무효화된 Component를 자동으로 정리합니다.
+
+---
+
 ## 5. API / WebSocket Handler 구조
 
 ### 5.1 API Handler
@@ -369,7 +389,7 @@ ApplyTheme()
 |---|---|
 | DataTable | `ApiDataTable`, `WebSocketDataTable`, `LevelDataTable`, `ShipObjectNameDataTable` |
 | Network/API | `BaseApiUrl`, `LocalApiUrl`, `TestApiUrl`, `ProdApiUrl` |
-| Network/WebSocket | `WebSocketUrl`, `WebSocketLogin`, `WebSocketPasscode` |
+| Network/WebSocket | `WebSocketUrl`, `WebSocketLogin`, `WebSocketPasscode`, `MaxReconnectAttempts` |
 | Topics | `WebSocketTopics`, `ApiTopics` |
 | UI | `DefaultWidgetTheme` |
 | Object | `ObjectBPClasses` |
@@ -471,3 +491,4 @@ ParseToStruct 내부에서는 UObject/GameThread 전용 작업을 하지 않기
 - Linux 패키징은 실행 방식에 따라 `LaunchDir`가 달라질 수 있으므로 실제 생성 경로를 확인해야 합니다.
 - `ParseToStruct()` 내부에서 Actor/Component/Blueprint 접근을 하면 스레드 안정성 문제가 생길 수 있습니다.
 - Public Header에 불필요한 의존성이 늘어나면 DTCore를 사용하는 프로젝트의 빌드 의존성도 커질 수 있습니다.
+- Base 클래스(`DataSyncCompBase`, `StatusVisualizerCompBase`, `MechDriverCompBase`, `DxLevelManagerBase`, `InteractableActor`)는 기본적으로 Tick이 꺼진 상태로 시작합니다(`bStartWithTickEnabled = false`). Tick이 필요한 파생 클래스/Blueprint는 `SetComponentTickEnabled(true)` 또는 `SetActorTickEnabled(true)`를 직접 호출해야 합니다.

@@ -4,11 +4,10 @@
 // Sets default values for this component's properties
 UStatusVisualizerCompBase::UStatusVisualizerCompBase()
 {
-	// Set this component to be initialized when the game starts, and to be ticked every frame.  You can turn these features
-	// off to improve performance if you don't need them.
+	// 베이스는 Tick을 사용하지 않음. Tick이 필요한 파생 클래스는
+	// SetComponentTickEnabled(true)로 직접 활성화할 것
 	PrimaryComponentTick.bCanEverTick = true;
-
-	// ...
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 }
 
 
@@ -16,18 +15,5 @@ UStatusVisualizerCompBase::UStatusVisualizerCompBase()
 void UStatusVisualizerCompBase::BeginPlay()
 {
 	Super::BeginPlay();
-
-	// ...
-	
-}
-
-
-// Called every frame
-void UStatusVisualizerCompBase::TickComponent(float DeltaTime, ELevelTick TickType,
-                                          FActorComponentTickFunction* ThisTickFunction)
-{
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	// ...
 }
 

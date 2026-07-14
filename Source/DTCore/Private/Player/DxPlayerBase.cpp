@@ -50,11 +50,6 @@ void ADxPlayerBase::BeginPlay()
 	}
 }
 
-void ADxPlayerBase::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-}
-
 void ADxPlayerBase::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);

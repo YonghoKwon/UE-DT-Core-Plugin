@@ -6,12 +6,10 @@
 
 AInteractableActor::AInteractableActor()
 {
+	// 베이스는 Tick을 사용하지 않음. Tick이 필요한 파생 클래스는
+	// SetActorTickEnabled(true)로 직접 활성화할 것
 	PrimaryActorTick.bCanEverTick = true;
-}
-
-void AInteractableActor::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
+	PrimaryActorTick.bStartWithTickEnabled = false;
 }
 
 void AInteractableActor::Click()
@@ -69,7 +67,7 @@ void AInteractableActor::OnCursorUnhover()
 	LastHoveredComponent = nullptr;
 }
 
-void AInteractableActor::HighlightActor(bool activate, const TArray<UPrimitiveComponent*> meshes, bool isError)
+void AInteractableActor::HighlightActor(bool activate, const TArray<UPrimitiveComponent*>& meshes, bool isError)
 {
 	// [최적화] 루프 밖에서 로그 한 번만 출력 (디버깅 필요시에만 주석 해제)
 	// UE_LOG(LogBase, Verbose, TEXT("HighlightActor: Activate=%d, MeshCount=%d"), activate, meshes.Num());

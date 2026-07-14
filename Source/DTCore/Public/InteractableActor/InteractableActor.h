@@ -23,7 +23,6 @@ class DTCORE_API AInteractableActor : public AActor
 
 public:
 	AInteractableActor();
-	virtual void Tick(float DeltaTime) override;
 
 	UFUNCTION(BlueprintCallable, Category = "InteractableActor")
 	virtual void Click();
@@ -32,7 +31,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "InteractableActor")
 	void OnCursorUnhover();
 	UFUNCTION(BlueprintCallable, Category = "InteractableActor")
-	static void HighlightActor(bool activate, const TArray<UPrimitiveComponent*> meshes, bool isError);
+	static void HighlightActor(bool activate, const TArray<UPrimitiveComponent*>& meshes, bool isError);
 	UFUNCTION(BlueprintCallable, Category = "InteractableActor")
 	void HighlightSingleMesh(bool activate, UPrimitiveComponent* mesh, bool isError);
 	UFUNCTION(BlueprintPure, BlueprintCallable, Category = "InteractableActor")

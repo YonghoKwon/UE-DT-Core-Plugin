@@ -20,8 +20,6 @@ protected:
 
 	virtual void SetupForLevel();
 	virtual void CleanupForLevel();
-public:
-	virtual void Tick(float DeltaTime) override;
 
 	// Function
 public:

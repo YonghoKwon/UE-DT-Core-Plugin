@@ -15,6 +15,10 @@ void UDxObjectSubsystem::Deinitialize()
 
 void UDxObjectSubsystem::RegisterObject(FName Category, const FString& Id, AActor* Actor)
 {
+	// RegisteredObjects는 동기화 없이 사용하므로 게임 스레드 전용
+	// (ParseToStruct 등 백그라운드 컨텍스트에서 호출 금지)
+	ensureMsgf(IsInGameThread(), TEXT("[DxObjectSubsystem] RegisterObject must be called on the game thread"));
+
 	if (Category.IsNone())
 	{
 		DX_LOG(GetWorld(), TEXT("[DxObjectSubsystem] RegisterObject failed. Category is none. Id=%s"), *Id);
@@ -47,6 +51,8 @@ void UDxObjectSubsystem::RegisterObject(FName Category, const FString& Id, AActo
 
 void UDxObjectSubsystem::UnregisterObject(FName Category, const FString& Id)
 {
+	ensureMsgf(IsInGameThread(), TEXT("[DxObjectSubsystem] UnregisterObject must be called on the game thread"));
+
 	if (TMap<FString, TObjectPtr<AActor>>* CategoryMap = RegisteredObjects.Find(Category))
 	{
 		CategoryMap->Remove(Id);

@@ -7,20 +7,18 @@
 #include "Core/DTCoreSettings.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
-
-UDxApiSubsystem::UDxApiSubsystem()
-{
-	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
-
-	if (Settings->ApiDataTable.ToSoftObjectPath().IsValid())
-	{
-		ApiDataTable = Settings->ApiDataTable.LoadSynchronous();
-	}
-}
+#include "TimerManager.h"
 
 void UDxApiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+
+	// CDO 생성자에서의 에셋 로드는 쿠킹/시작 히치 위험이 있어 Initialize에서 수행
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+	if (Settings && Settings->ApiDataTable.ToSoftObjectPath().IsValid())
+	{
+		ApiDataTable = Settings->ApiDataTable.LoadSynchronous();
+	}
 
 	DTCoreRuntimeConfig::EnsureRuntimeOverrideTemplate();
 	HttpModule = &FHttpModule::Get();
@@ -28,6 +26,16 @@ void UDxApiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UDxApiSubsystem::Deinitialize()
 {
+	// 대기 중인 재시도 타이머 일괄 해제
+	if (UGameInstance* GameInstance = GetGameInstance())
+	{
+		for (FTimerHandle& Handle : PendingRetryTimers)
+		{
+			GameInstance->GetTimerManager().ClearTimer(Handle);
+		}
+	}
+	PendingRetryTimers.Empty();
+
 	// 역순으로 순회하여 중간에 원소가 삭제(Remove)되더라도 크래시가 발생하지 않도록 방어
 	for (int32 i = ActiveHttpRequests.Num() - 1; i >= 0; --i)
 	{
@@ -48,35 +56,48 @@ void UDxApiSubsystem::Deinitialize()
 
 void UDxApiSubsystem::DxHttpCall(const FString& FullUrl, const FString& Verb, const FString& ContentString, const TMap<FString, FString>& Headers, FDxApiCallback Callback)
 {
+	FDxHttpRequestContext Context;
+	Context.FullUrl = FullUrl;
+	Context.Verb = Verb;
+	Context.ContentString = ContentString;
+	Context.Headers = Headers;
+	Context.Callback = Callback;
+	Context.AttemptIndex = 0;
+
+	InternalHttpCall(MoveTemp(Context));
+}
+
+void UDxApiSubsystem::InternalHttpCall(FDxHttpRequestContext Context)
+{
 	if (!HttpModule)
 	{
-		Callback.ExecuteIfBound(false, 0, TEXT("HttpModule is not initialized."));
+		Context.Callback.ExecuteIfBound(false, 0, TEXT("HttpModule is not initialized."));
 		return;
 	}
 
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = HttpModule->CreateRequest();
-	Request->SetURL(FullUrl);
+	Request->SetURL(Context.FullUrl);
 	// Method 설정 (GET, POST, PUT, DELETE 등)
-	Request->SetVerb(Verb);
+	Request->SetVerb(Context.Verb);
 	// 헤더 설정
-	for (const auto& Header : Headers)
+	for (const auto& Header : Context.Headers)
 	{
 		Request->SetHeader(Header.Key, Header.Value);
 	}
 	// Body 설정 (POST/PUT 등의 경우)
-	if (!ContentString.IsEmpty())
+	if (!Context.ContentString.IsEmpty())
 	{
-		Request->SetContentAsString(ContentString);
+		Request->SetContentAsString(Context.ContentString);
 	}
 
-	Request->OnProcessRequestComplete().BindUObject(this, &UDxApiSubsystem::InternalOnResponseReceived, Callback);
+	Request->OnProcessRequestComplete().BindUObject(this, &UDxApiSubsystem::InternalOnResponseReceived, Context);
 
 	// 요청을 보내기 전에 추적 배열에 등록
 	ActiveHttpRequests.Add(Request);
 	if (!Request->ProcessRequest())
 	{
 		ActiveHttpRequests.Remove(Request);
-		Callback.ExecuteIfBound(false, 0, TEXT("HTTP request failed to start."));
+		Context.Callback.ExecuteIfBound(false, 0, TEXT("HTTP request failed to start."));
 	}
 }
 
@@ -164,7 +185,7 @@ void UDxApiSubsystem::DxRequestApiWithParameter(const FName& RowName, FDxApiCall
 	DxHttpCall(FullUrl, MethodType, TEXT(""), DefaultHeaders, Callback);
 }
 
-void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request, TSharedPtr<IHttpResponse, ESPMode::ThreadSafe> Response, bool bWasSuccessful, FDxApiCallback Callback)
+void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request, TSharedPtr<IHttpResponse, ESPMode::ThreadSafe> Response, bool bWasSuccessful, FDxHttpRequestContext Context)
 {
 	// 응답이 왔으므로 (성공이든 실패든) 추적 배열에서 제거
 	if (Request.IsValid())
@@ -175,8 +196,9 @@ void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMod
 	int32 ResponseCode = 0;
 	FString Content = TEXT("");
 	bool bIsOk = false;
+	const bool bConnectionFailed = !bWasSuccessful || !Response.IsValid();
 
-	if (bWasSuccessful && Response.IsValid())
+	if (!bConnectionFailed)
 	{
 		ResponseCode = Response->GetResponseCode();
 		Content = Response->GetContentAsString();
@@ -184,7 +206,6 @@ void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMod
 		// HTTP 코드가 200번대(성공)인지 확인
 		if (EHttpResponseCodes::IsOk(ResponseCode))
 		{
-			// UE_LOG(LogBase, Log, TEXT("Response [%d]: %s"), ResponseCode, *Content);
 			bIsOk = true;
 
 			// DxDataSubsystem에 데이터 저장
@@ -200,17 +221,49 @@ void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMod
 		}
 		else
 		{
-			// UE_LOG(LogBase, Warning, TEXT("Response Error [%d]: %s"), ResponseCode, *Content);
 			DX_LOG(GetWorld(), TEXT("Response Error [%d]: %s"), ResponseCode, *Content);
 		}
 	}
 	else
 	{
-		// UE_LOG(LogBase, Error, TEXT("Connection Failed or No Response"));
-		DX_LOG(GetWorld(), TEXT("Connection Failed or No Response"));
+		DX_LOG(GetWorld(), TEXT("Connection Failed or No Response: %s"), *Context.FullUrl);
 	}
 
-	Callback.ExecuteIfBound(bIsOk, ResponseCode, Content);
+	// 일시적 오류(연결 실패/5xx)는 지수 백오프로 재시도. 4xx는 재시도하지 않음
+	const bool bRetryable = bConnectionFailed || ResponseCode >= 500;
+	if (!bIsOk && bRetryable && Context.AttemptIndex + 1 < MaxHttpAttempts && HttpModule)
+	{
+		if (UGameInstance* GameInstance = GetGameInstance())
+		{
+			const float RetryDelay = InitialHttpRetryDelay * FMath::Pow(2.0f, static_cast<float>(Context.AttemptIndex));
+			Context.AttemptIndex++;
+
+			DX_LOG(GetWorld(), TEXT("HTTP retry in %.1fs (Attempt %d/%d): %s"), RetryDelay, Context.AttemptIndex + 1, MaxHttpAttempts, *Context.FullUrl);
+
+			// 이미 만료된 타이머 핸들은 정리해 누적 방지
+			FTimerManager& TimerManager = GameInstance->GetTimerManager();
+			PendingRetryTimers.RemoveAll([&TimerManager](const FTimerHandle& Handle)
+			{
+				return !TimerManager.IsTimerActive(Handle);
+			});
+
+			FTimerHandle& RetryHandle = PendingRetryTimers.AddDefaulted_GetRef();
+			GameInstance->GetTimerManager().SetTimer(
+				RetryHandle,
+				FTimerDelegate::CreateWeakLambda(this, [this, Context]()
+				{
+					InternalHttpCall(Context);
+				}),
+				RetryDelay,
+				false
+			);
+
+			// 최종 결과가 확정될 때까지 콜백 호출을 미룸
+			return;
+		}
+	}
+
+	Context.Callback.ExecuteIfBound(bIsOk, ResponseCode, Content);
 }
 
 FString UDxApiSubsystem::GetServerUrl(EApiType ApiType) const

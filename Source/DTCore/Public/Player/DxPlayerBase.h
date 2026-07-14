@@ -25,7 +25,6 @@ class DTCORE_API ADxPlayerBase : public APawn
 
 public:
 	ADxPlayerBase();
-	virtual void Tick(float DeltaTime) override;
 
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 protected:
