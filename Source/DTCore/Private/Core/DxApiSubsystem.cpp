@@ -91,6 +91,10 @@ void UDxApiSubsystem::InternalHttpCall(FDxHttpRequestContext Context)
 	}
 
 	Request->OnProcessRequestComplete().BindUObject(this, &UDxApiSubsystem::InternalOnResponseReceived, Context);
+#if WITH_DEV_AUTOMATION_TESTS
+	// 테스트는 실제 UE 요청의 URL/UTF-8 본문을 관측하고 외부 송신을 막을 수 있다.
+	if (RequestProbeForTests && !RequestProbeForTests(Request)) return;
+#endif
 
 	// 요청을 보내기 전에 추적 배열에 등록
 	ActiveHttpRequests.Add(Request);
@@ -209,7 +213,7 @@ void UDxApiSubsystem::DxRequestApiWithBody(const FName& RowName, FDxApiCallback 
 	TMap<FString, FString> DefaultHeaders;
 	DefaultHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
 	
-	DxHttpCall(FullUrl, MethodType, TEXT(""), DefaultHeaders, Callback);
+	DxHttpCall(FullUrl, MethodType, Body, DefaultHeaders, Callback);
 }
 
 void UDxApiSubsystem::DxRequestApiWithParameterAndBody(const FName& RowName, FDxApiCallback Callback, const TArray<FString>& Parameters, const FString& Body)
@@ -244,7 +248,7 @@ void UDxApiSubsystem::DxRequestApiWithParameterAndBody(const FName& RowName, FDx
 	TMap<FString, FString> DefaultHeaders;
 	DefaultHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
 	
-	DxHttpCall(FullUrl, MethodType, TEXT(""), DefaultHeaders, Callback);
+	DxHttpCall(FullUrl, MethodType, Body, DefaultHeaders, Callback);
 }
 
 void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request, TSharedPtr<IHttpResponse, ESPMode::ThreadSafe> Response, bool bWasSuccessful, FDxHttpRequestContext Context)
@@ -358,7 +362,14 @@ FString UDxApiSubsystem::GetServerUrl(EApiType ApiType) const
 	}
 
 	FString RuntimeOverride;
-	if (DTCoreRuntimeConfig::TryReadRuntimeOverride(*ConfigKey, RuntimeOverride))
+	const auto ReadOverride = [this](const TCHAR* Key, FString& Value)
+	{
+#if WITH_DEV_AUTOMATION_TESTS
+		if (RuntimeOverrideReaderForTests) return RuntimeOverrideReaderForTests(Key, Value);
+#endif
+		return DTCoreRuntimeConfig::TryReadRuntimeOverride(Key, Value);
+	};
+	if (ReadOverride(*ConfigKey, RuntimeOverride) && !RuntimeOverride.IsEmpty())
 	{
 		return RuntimeOverride;
 	}
@@ -366,6 +377,10 @@ FString UDxApiSubsystem::GetServerUrl(EApiType ApiType) const
 	if (!SettingsValue.IsEmpty())
 	{
 		return SettingsValue;
+	}
+	if (ConfigKey != TEXT("BaseApiUrl") && ReadOverride(TEXT("BaseApiUrl"), RuntimeOverride) && !RuntimeOverride.IsEmpty())
+	{
+		return RuntimeOverride;
 	}
 
 	return Settings && !Settings->BaseApiUrl.IsEmpty() ? Settings->BaseApiUrl : TEXT("http://localhost:8090");

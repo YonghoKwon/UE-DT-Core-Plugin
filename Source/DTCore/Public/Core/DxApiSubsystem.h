@@ -39,6 +39,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "DxApi")
 	bool IsApiDataTableLoaded() const { return ApiDataTable != nullptr; }
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FDTCoreHttpContractTest;
+	TFunction<bool(const TSharedRef<IHttpRequest, ESPMode::ThreadSafe>&)> RequestProbeForTests;
+	TFunction<bool(const TCHAR*, FString&)> RuntimeOverrideReaderForTests;
+#endif
 	// 재시도를 위해 요청 정보를 함께 들고 다니는 컨텍스트
 	struct FDxHttpRequestContext
 	{
