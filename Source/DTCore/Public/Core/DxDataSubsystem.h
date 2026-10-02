@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "HAL/ThreadSafeBool.h"
 #include "HAL/ThreadSafeCounter.h"
+#include "Async/Future.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "DxDataSubsystem.generated.h"
 
@@ -31,6 +32,13 @@ public:
 	void EnqueueWebSocketData(const FString& Data);
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FDTCoreWorkerShutdownTest;
+#endif
+	TFuture<void> ApiWorker;
+	TFuture<void> WebSocketWorker;
+	TAtomic<uint64> ParseGeneration{0};
+	void HandleWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources);
 	void ProcessApiQueue();
 	void ProcessWebSocketQueue();
 
@@ -47,8 +55,8 @@ private:
 	UPROPERTY()
 	TObjectPtr<UDataTable> WebSocketDataTable;
 
-	TQueue<FString> ApiDataQueue;
-	TQueue<FString> WebSocketDataQueue;
+	TQueue<FString,EQueueMode::Mpsc> ApiDataQueue;
+	TQueue<FString,EQueueMode::Mpsc> WebSocketDataQueue;
 
 	UPROPERTY()
 	TMap<FString, TObjectPtr<UApiMessage>> ApiMessageMap;

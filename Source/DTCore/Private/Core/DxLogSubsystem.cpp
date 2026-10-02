@@ -6,6 +6,7 @@
 #include "Misc/DateTime.h"
 #include "Async/Async.h"
 #include "Misc/CoreDelegates.h"
+#include "Core/DTCoreSettings.h"
 
 void UDxLogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -23,24 +24,14 @@ void UDxLogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	FCoreDelegates::OnExit.AddUObject(this, &UDxLogSubsystem::OnGameExit);
 
-	TWeakObjectPtr<UDxLogSubsystem> WeakThis(this);
-	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [WeakThis]()
-	{
-		if (UDxLogSubsystem* StrongThis = WeakThis.Get())
-		{
-			if (!StrongThis->bIsShuttingDown)
-			{
-				StrongThis->DeleteOldLogs(7);
-			}
-		}
-	});
+	CleanupTask=Async(EAsyncExecution::ThreadPool,[this]() { DeleteOldLogs(7); });
 }
 
 void UDxLogSubsystem::Deinitialize()
 {
 	FCoreDelegates::OnExit.RemoveAll(this);
 	bIsShuttingDown = true;
-	ProcessLogBuffer();
+	FlushLogs();
 	Super::Deinitialize();
 }
 
@@ -51,11 +42,21 @@ void UDxLogSubsystem::OnGameExit()
 	WriteLog(TEXT("   GAME EXIT - SYSTEM SHUTDOWN    "));
 	WriteLog(TEXT("========================================="));
 
+	FlushLogs();
+}
+
+bool UDxLogSubsystem::FlushLogs()
+{
+	FScopeLock ScheduleLock(&ScheduleMutex);
+	if (CleanupTask.IsValid()) CleanupTask.Wait();
+	if (WriterTask.IsValid()) WriterTask.Wait();
 	ProcessLogBuffer();
+	return !bWriteFailed;
 }
 
 void UDxLogSubsystem::WriteLog(const FString& LogContent, bool bPrintToScreen, FString LogFileName)
 {
+	if (bIsShuttingDown) return;
 	FDateTime Now = FDateTime::Now();
 	FString TimeStamp = Now.ToString(TEXT("[%Y-%m-%d %H:%M:%S.%s] "));
 	FString FinalLog = TimeStamp + LogContent + TEXT("\n");
@@ -103,32 +104,24 @@ void UDxLogSubsystem::WriteLog(const FString& LogContent, bool bPrintToScreen, F
 	{
 		// BufferMutex를 잠그고 안전하게 추가
 		FScopeLock Lock(&BufferMutex);
+		if (bIsShuttingDown) return;
 		LogBuffer.Emplace(TargetFileName, FinalLog);
 	}
 
-	if (bIsShuttingDown)
-	{
-		ProcessLogBuffer();
-		return;
-	}
+	FScopeLock ScheduleLock(&ScheduleMutex);
+	if (bIsShuttingDown) return;
 
 	// 4. [중요] 현재 쓰는 놈(Consumer)이 없으면, 하나 깨워서 일 시킴
 	// bIsWriting이 false였다면 true로 바꾸고 if문 진입 (Atomic)
 	if (!bIsWriting.AtomicSet(true))
 	{
-		TWeakObjectPtr<UDxLogSubsystem> WeakThis(this);
-		AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [WeakThis]()
-		{
-			if (UDxLogSubsystem* StrongThis = WeakThis.Get())
-			{
-				StrongThis->ProcessLogBuffer();
-			}
-		});
+		WriterTask=Async(EAsyncExecution::ThreadPool,[this]() { ProcessLogBuffer(); });
 	}
 }
 
 void UDxLogSubsystem::DeleteOldLogs(int32 RetentionDays)
 {
+	FScopeLock WriterLock(&WriterMutex);
 	IFileManager& FileManager = IFileManager::Get();
 	FString LogDir = GetLogDirectory();
 
@@ -192,11 +185,14 @@ FString UDxLogSubsystem::GetLogDirectory()
 		return CachedLogDirectory;
 	}
 	
+	const FString Configured=GetDefault<UDTCoreSettings>()->LogDirectory;
+	if (!Configured.IsEmpty()) return FPaths::IsRelative(Configured)?FPaths::ProjectSavedDir()/Configured:Configured;
 	return FPaths::LaunchDir() / TEXT("Logs") / TEXT("CustomLogs");
 }
 
 void UDxLogSubsystem::ProcessLogBuffer()
 {
+	FScopeLock WriterLock(&WriterMutex);
 	while (true)
 	{
 		TArray<TPair<FString, FString>> LocalBuffer;
@@ -230,9 +226,19 @@ void UDxLogSubsystem::ProcessLogBuffer()
 		for (const auto& LogEntry : LocalBuffer)
 		{
 			FString FullPath = LogDir / LogEntry.Key;
-			FFileHelper::SaveStringToFile(LogEntry.Value, *FullPath,
+			bool Saved=false;
+#if WITH_DEV_AUTOMATION_TESTS
+			if (WriterSinkForTests) Saved=WriterSinkForTests(FullPath,LogEntry.Value);
+			else
+#endif
+			Saved=FFileHelper::SaveStringToFile(LogEntry.Value, *FullPath,
 				FFileHelper::EEncodingOptions::ForceUTF8,
 			    &FileManager, FILEWRITE_Append);
+			if (!Saved)
+			{
+				bWriteFailed=true;
+				UE_LOG(LogBase,Error,TEXT("DTCore log file write failed."));
+			}
 		}
 
 		// 루프 다시 시작 -> 그 사이 쌓인 로그가 있는지 확인하러 감

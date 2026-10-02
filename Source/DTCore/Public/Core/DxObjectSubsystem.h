@@ -12,6 +12,7 @@ class DTCORE_API UDxObjectSubsystem : public UGameInstanceSubsystem
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
+	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
 
 	UFUNCTION(BlueprintCallable, Category = "DxObject")
 	void RegisterObject(FName Category, const FString& Id, AActor* Actor);
@@ -65,6 +66,9 @@ public:
 	const TMap<FString, TObjectPtr<AActor>>* GetCategoryMap(FName Category) const;
 
 private:
+	UFUNCTION() void HandleRegisteredActorDestroyed(AActor* Actor);
+	void HandleWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources);
+	void ReleaseActorIfUnused(AActor* Actor);
 	// 게임 스레드 전용. 동기화 없이 접근하므로 백그라운드 스레드에서 사용 금지
 	TMap<FName, TMap<FString, TObjectPtr<AActor>>> RegisteredObjects;
 };
