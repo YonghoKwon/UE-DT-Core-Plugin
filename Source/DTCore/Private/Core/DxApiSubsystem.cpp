@@ -12,6 +12,8 @@
 void UDxApiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	bIsShuttingDown = false;
+	++RequestGeneration;
 
 	// CDO 생성자에서의 에셋 로드는 쿠킹/시작 히치 위험이 있어 Initialize에서 수행
 	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
@@ -26,6 +28,9 @@ void UDxApiSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UDxApiSubsystem::Deinitialize()
 {
+	// Cancel 콜백이나 이미 예약된 완료가 종료 이후 업무 처리를 다시 시작하지 않는다.
+	bIsShuttingDown = true;
+	++RequestGeneration;
 	// 대기 중인 재시도 타이머 일괄 해제
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{
@@ -42,6 +47,7 @@ void UDxApiSubsystem::Deinitialize()
 		if (ActiveHttpRequests.IsValidIndex(i))
 		{
 			TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = ActiveHttpRequests[i];
+			Request->OnProcessRequestComplete().Unbind();
 			if (Request->GetStatus() == EHttpRequestStatus::Processing)
 			{
 				Request->CancelRequest();
@@ -63,12 +69,14 @@ void UDxApiSubsystem::DxHttpCall(const FString& FullUrl, const FString& Verb, co
 	Context.Headers = Headers;
 	Context.Callback = Callback;
 	Context.AttemptIndex = 0;
+	Context.Generation = RequestGeneration;
 
 	InternalHttpCall(MoveTemp(Context));
 }
 
 void UDxApiSubsystem::InternalHttpCall(FDxHttpRequestContext Context)
 {
+	if (bIsShuttingDown || Context.Generation != RequestGeneration) return;
 	if (!HttpModule)
 	{
 		Context.Callback.ExecuteIfBound(false, 0, TEXT("HttpModule is not initialized."));
@@ -253,6 +261,7 @@ void UDxApiSubsystem::DxRequestApiWithParameterAndBody(const FName& RowName, FDx
 
 void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request, TSharedPtr<IHttpResponse, ESPMode::ThreadSafe> Response, bool bWasSuccessful, FDxHttpRequestContext Context)
 {
+	if (bIsShuttingDown || Context.Generation != RequestGeneration) return;
 	// 응답이 왔으므로 (성공이든 실패든) 추적 배열에서 제거
 	if (Request.IsValid())
 	{
