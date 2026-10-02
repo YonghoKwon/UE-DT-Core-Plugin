@@ -246,7 +246,7 @@ void ADxPlayerControllerBase::CheckMouseHover()
 			{
 				bIsWidgetUnderMouse = true;
 				// 기존에 호버된 3D 액터가 있으면 Unhover 처리
-				if (CurrentHoveredActor) 
+				if (CurrentHoveredActor)
 				{
 					CurrentHoveredActor->OnCursorUnhover();
 					CurrentHoveredActor = nullptr;
