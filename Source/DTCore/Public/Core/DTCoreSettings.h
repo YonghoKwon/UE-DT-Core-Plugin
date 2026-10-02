@@ -20,6 +20,9 @@ public:
 	// Level 데이터 테이블 경로 설정
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|DataTable")
 	TSoftObjectPtr<UDataTable> LevelDataTable;
+	// CCTV URL 데이터 테이블 경로 설정
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|DataTable")
+	TSoftObjectPtr<UDataTable> CctvUrlDataTable;
 
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Object")
 	TMap<FString, TObjectPtr<UClass>> ObjectBPClasses;
@@ -28,13 +31,13 @@ public:
 	TSoftObjectPtr<UDataTable> ShipObjectNameDataTable;
 
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket")
-	FString WebSocketUrl = TEXT("ws://localhost:61616");
+	FString WebSocketUrl = TEXT("");
 
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket")
-	FString WebSocketLogin = TEXT("artemis");
+	FString WebSocketLogin = TEXT("");
 
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket")
-	FString WebSocketPasscode = TEXT("artemis");
+	FString WebSocketPasscode = TEXT("");
 
 	// WebSocket 재연결 최대 시도 횟수 (0 = 무제한)
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket", meta = (ClampMin = "0"))
@@ -42,10 +45,10 @@ public:
 
 	// API 기본 URL
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|API")
-	FString BaseApiUrl = TEXT("http://localhost:8090");
+	FString BaseApiUrl = TEXT("");
 
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|API")
-	FString LocalApiUrl = TEXT("http://localhost:8090");
+	FString LocalApiUrl = TEXT("");
 
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|API")
 	FString TestApiUrl = TEXT("");
@@ -54,12 +57,24 @@ public:
 	FString ProdApiUrl = TEXT("");
 
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|Topics")
-	TArray<FString> WebSocketTopics = { TEXT("topic.cep.output.0") };
+	TArray<FString> WebSocketTopics;
 
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|Topics")
-	TArray<FString> ApiTopics = { TEXT("topic.api.output.0") };
+	TArray<FString> ApiTopics;
 
 	// 프로젝트 전체에서 기본으로 사용할 위젯 테마 데이터
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|UI")
 	TSoftObjectPtr<class UDxWidgetThemeData> DefaultWidgetTheme;
+	
+	// 프레임 제한 (0 = 무제한)
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Performance", meta = (ClampMin = "0.0"))
+	float FrameRateLimit = 60.0f;
+	
+	/**
+	 * 중복 체크를 건너뜀 WidgetFlag 값 목록.
+	 * 프로젝트의 DefaultGame.ini [/Script/DTCore.DTCoreSettings] 섹션에서 설정하세요.
+	 * 예) +NoDuplicateCheckFlags=3
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|UI")
+	TArray<uint8> NoDuplicateCheckFlags;
 };

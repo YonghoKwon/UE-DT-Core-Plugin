@@ -43,15 +43,16 @@ public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DxWidget")
 	void CloseWidgetAddLogic();
 
+	// 자식 클래스에서 오버라이드하여 위젯별 Retry 로직 구현
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DxWidget")
 	void RetryWidget();
 	virtual void RetryWidget_Implementation();
 
 
 	UFUNCTION(BlueprintCallable, Category = "DxWidget|ChildWidget")
-	UDxWidget* OpenChildWidget(EDxWidgetFlag InChildFlag);
+	UDxWidget* OpenChildWidget(uint8 InChildFlag);
 	UFUNCTION(BlueprintCallable, Category = "DxWidget|ChildWidget")
-	void CloseChildWidget(EDxWidgetFlag InChildFlag);
+	void CloseChildWidget(uint8 InChildFlag);
 
 	UFUNCTION(BlueprintCallable, Category = "DxWidget")
 	void SetParentWidget(UDxWidget* InParentWidget);
@@ -115,8 +116,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DxWidget")
 	TObjectPtr<UDxWidgetConfigData> WidgetConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DxWidget")
-	EDxWidgetFlag WidgetFlag = EDxWidgetFlag::None;
+	uint8 WidgetFlag = 0;
 
+	// true이면 뷰 타입 전환(ChangePlayerViewType) 시 CloseWidget 대상에서 제외
+	// BringToFront는 정상 동작하면서 화면에서 제거되지 않아야 하는 위젯에 사용
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DxWidget")
+	bool bPresistent = false;
+	
 	// 나를 호출한 부모 위젯
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DxWidget|Hierarchy")
 	TWeakObjectPtr<UDxWidget> ParentWidget;

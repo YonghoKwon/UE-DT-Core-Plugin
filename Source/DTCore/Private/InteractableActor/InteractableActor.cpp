@@ -2,22 +2,25 @@
 
 #include "DTCore.h"
 #include "Components/PoseableMeshComponent.h"
+#include "Core/DxWidgetSubsystem.h"
 #include "Player/DxPlayerBase.h"
 
 AInteractableActor::AInteractableActor()
 {
-	// 베이스는 Tick을 사용하지 않음. Tick이 필요한 파생 클래스는
-	// SetActorTickEnabled(true)로 직접 활성화할 것
 	PrimaryActorTick.bCanEverTick = true;
 	PrimaryActorTick.bStartWithTickEnabled = false;
 }
 
 void AInteractableActor::Click()
 {
+	DX_LOG(GetWorld(), TEXT("[InteractableActor::Click] ENTER - Actor=%s, Time=%.4f"),
+		*GetName(), GetWorld()->GetTimeSeconds() : -1.0);
+	
 	// WidgetFlag가 비어있으면 리턴
-	if (WidgetFlag == EDxWidgetFlag::None)
+	if (WidgetFlag == 0)
 	{
-		UE_LOG(LogBase, Warning, TEXT("InteractableActor::Click - WidgetFlag is empty!"));
+		// UE_LOG(LogBase, Warning, TEXT("InteractableActor::Click - WidgetFlag is empty!"));
+		DX_LOG(GetWorld(), TEXT("[InteractableActor::Click - WidgetFlag is empty!"));
 		return;
 	}
 
@@ -25,14 +28,14 @@ void AInteractableActor::Click()
 	UGameInstance* GI = GetWorld()->GetGameInstance();
 	if (!GI)
 	{
-		UE_LOG(LogBase, Error, TEXT("InteractableActor::Click - GameInstance is null!"));
+		DX_LOG(GetWorld(), TEXT("InteractableActor::Click - GameInstance is null!"));
 		return;
 	}
 
 	UDxWidgetSubsystem* WidgetSubsystem = GI->GetSubsystem<UDxWidgetSubsystem>();
 	if (!WidgetSubsystem)
 	{
-		UE_LOG(LogBase, Error, TEXT("InteractableActor::Click - DxWidgetSubsystem is null!"));
+		DX_LOG(GetWorld(), TEXT("InteractableActor::Click - DxWidgetSubsystem is null!"));
 		return;
 	}
 
@@ -92,7 +95,7 @@ void AInteractableActor::HighlightSingleMesh(bool activate, UPrimitiveComponent*
 {
 	if (!mesh)
 	{
-		UE_LOG(LogBase, Warning, TEXT("HighlightSingleMesh - Mesh is null!"));
+		DX_LOG(GetWorld(), TEXT("HighlightSingleMesh - Mesh is null!"));
 		return;
 	}
 
@@ -116,7 +119,7 @@ TArray<UPrimitiveComponent*> AInteractableActor::GetActorAllMesh()
 	if (UPrimitiveComponent* RootPrimitive = Cast<UPrimitiveComponent>(RootComponent))
 	{
 		meshes.Add(RootPrimitive);
-		UE_LOG(LogBase, Log, TEXT("GetActorAllMesh - Added RootComponent: %s"), *RootPrimitive->GetName());
+		// UE_LOG(LogBase, Log, TEXT("GetActorAllMesh - Added RootComponent: %s"), *RootPrimitive->GetName());
 	}
 
 
@@ -153,7 +156,7 @@ TArray<UPrimitiveComponent*> AInteractableActor::GetActorAllMesh()
 		}
 	}
 
-	UE_LOG(LogBase, Warning, TEXT("GetActorAllMesh found %d meshes for Actor: %s"), meshes.Num(), *GetName());
+	// UE_LOG(LogBase, Warning, TEXT("GetActorAllMesh found %d meshes for Actor: %s"), meshes.Num(), *GetName());
 
 	return meshes;
 }

@@ -15,9 +15,15 @@ void UDxWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	// CDO 생성자에서의 에셋 로드는 쿠킹/시작 히치 위험이 있어 Initialize에서 수행
 	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
-	if (Settings && Settings->LevelDataTable.ToSoftObjectPath().IsValid())
+	if (Settings)
 	{
-		LevelDataTable = Settings->LevelDataTable.LoadSynchronous();
+		if (Settings && Settings->LevelDataTable.ToSoftObjectPath().IsValid())
+		{
+			LevelDataTable = Settings->LevelDataTable.LoadSynchronous();
+		}
+		
+		// 프로젝트 DefaultGame.ini에서 설정된 NoDuplicateCheckFlags 적용
+		NoDuplicateCheckFlags = Settings->NoDuplicateCheckFlags;
 	}
 }
 
@@ -62,14 +68,14 @@ void UDxWidgetSubsystem::SwitchUIMode(EDxViewMode NewMode)
 	// 3. 새 메인 위젯 띄우기
 	if (MainWidgetClass)
 	{
-		UWorld* World = GetWorld();
-		if (!World)
+		UWorld* CurrentWorld = GetWorld();
+		if (!CurrentWorld)
 		{
 			DX_LOG(GetWorld(), TEXT("SwitchUIMode: World가 유효하지 않음"));
 			return;
 		}
 
-		MainWidgetInstance = CreateWidget<UDxWidget>(World, MainWidgetClass);
+		MainWidgetInstance = CreateWidget<UDxWidget>(CurrentWorld, MainWidgetClass);
 		if (MainWidgetInstance)
 		{
 			MainWidgetInstance->AddToViewport();
@@ -102,7 +108,7 @@ UDxWidget* UDxWidgetSubsystem::OpenWidget(AInteractableActor* InteractableActor)
 	return FirstWidget;
 }
 
-UDxWidget* UDxWidgetSubsystem::OpenWidgetFromWidget(UDxWidget* ParentDxWidget, EDxWidgetFlag TargetFlag)
+UDxWidget* UDxWidgetSubsystem::OpenWidgetFromWidget(UDxWidget* ParentDxWidget, uint8 TargetFlag)
 {
 	if (!ParentDxWidget) return nullptr;
 
@@ -137,7 +143,7 @@ void UDxWidgetSubsystem::CloseWidget(UDxWidget* CloseWidget)
 	{
 		if (IsValid(Child))
 		{
-			UE_LOG(LogTemp, Log, TEXT("CloseWidget: Cascading close child %s"), *Child->GetName());
+			// UE_LOG(LogTemp, Log, TEXT("CloseWidget: Cascading close child %s"), *Child->GetName());
 
 			this->CloseWidget(Child);
 		}
@@ -158,10 +164,10 @@ void UDxWidgetSubsystem::CloseWidget(UDxWidget* CloseWidget)
 	// 4. 화면 (Viewport 또는 부모 패널)에서 제거
 	CloseWidget->RemoveFromParent();
 
-	UE_LOG(LogTemp, Log, TEXT("CloseWidget: Widget '%s' closed successfully"), *CloseWidget->GetName());
+	// UE_LOG(LogTemp, Log, TEXT("CloseWidget: Widget '%s' closed successfully"), *CloseWidget->GetName());
 }
 
-void UDxWidgetSubsystem::CloseWidgetFromWidget(UDxWidget* ParentDxWidget, EDxWidgetFlag TargetFlag)
+void UDxWidgetSubsystem::CloseWidgetFromWidget(UDxWidget* ParentDxWidget, uint8 TargetFlag)
 {
 	if (!ParentDxWidget) return;
 
@@ -185,11 +191,32 @@ TArray<TObjectPtr<UDxWidget>> UDxWidgetSubsystem::GetOpenWidgets()
 	return this->OpenWidgets;
 }
 
-UDxWidget* UDxWidgetSubsystem::CreateWidgetInternal(TSubclassOf<UDxWidget> WidgetClass, const FVector2D& Position,
-	AInteractableActor* OwnerActor, UDxWidget* ParentWidget, EDxWidgetFlag Flag)
+bool UDxWidgetSubsystem::IsMouseOverAnyWidget() const
 {
-	// 1. 중복 체크
-	if (Flag != EDxWidgetFlag::CctvWidget)
+	// 1. OpenWidgets 배열 체크 (동적으로 생성된 위젯들)
+	for (const UDxWidget* Widget : OpenWidgets)
+	{
+		if (IsValid(Widget) && Widget->IsHovered())
+		{
+			return true;
+		}
+	}
+	
+	// 2. MainWidget 체크 (Blueprint에 직접 배치된 위젯들 포함)
+	// DxM7atNotify, DxM7atPimsFv, DxM7atCctvListFv 등이 여기 해당
+	if (IsValid(MainWidgetInstance) && MainWidgetInstance->IsHovered())
+	{
+		return true;
+	}
+	
+	return false;
+}
+
+UDxWidget* UDxWidgetSubsystem::CreateWidgetInternal(TSubclassOf<UDxWidget> WidgetClass, const FVector2D& Position,
+	AInteractableActor* OwnerActor, UDxWidget* ParentWidget, uint8 Flag)
+{
+	// 1. 중복 체크 (NoDuplicateCheckFlags에 등록된 플래그는 중복 허용)
+	if (!NoDuplicateCheckFlags.Contains(Flag))
 	{
 		for (UDxWidget* ExistingWidget : OpenWidgets)
 		{
@@ -202,7 +229,7 @@ UDxWidget* UDxWidgetSubsystem::CreateWidgetInternal(TSubclassOf<UDxWidget> Widge
 				if (bSameSpawn)
 				{
 					BringToFront(ExistingWidget);
-					DX_LOG(GetWorld(), TEXT("CreateWidgetInternal: Widget already open."));
+					// DX_LOG(GetWorld(), TEXT("CreateWidgetInternal: Widget already open."));
 					return ExistingWidget;
 				}
 			}
@@ -263,10 +290,29 @@ UDxWidget* UDxWidgetSubsystem::CreateWidgetInternal(TSubclassOf<UDxWidget> Widge
 	return NewWidget;
 }
 
+void UDxWidgetSubsystem::RegisterWidget(UDxWidget* Widget)
+{
+	if (Widget && !OpenWidgets.Contains(Widget))
+	{
+		OpenWidgets.Add(Widget);
+	}
+}
+
+void UDxWidgetSubsystem::UnregisterWidget(UDxWidget* Widget)
+{
+	if (Widget)
+	{
+		OpenWidgets.Remove(Widget);
+	}
+}
+
 void UDxWidgetSubsystem::BringToFront(UDxWidget* Widget)
 {
 	if (!Widget || !Widget->Slot) return;
 
+	// OpenWidgets에 포함된 위젯만 처리 (Top/Bottom 등 정적 위젯에 잘못된 패널에서 ZOrder를 변경하는 것을 방지)
+	if (!OpenWidgets.Contains(Widget)) return;
+	
 	if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot))
 	{
 		int32 MaxZOrder = 0;

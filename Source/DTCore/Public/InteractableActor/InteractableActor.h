@@ -2,8 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Core/DxWidgetSubsystem.h"
-#include "UI/DxWidgetDataType.h"
 #include "InteractableActor.generated.h"
 
 class UDxWidgetConfigData;
@@ -37,6 +35,7 @@ public:
 	UFUNCTION(BlueprintPure, BlueprintCallable, Category = "InteractableActor")
 	TArray<UPrimitiveComponent*> GetActorAllMesh();
 
+	/** 캐시된 메시 목록을 강제로 갱신 (Construction Script 재실행 후 호출 필수) */
 	UFUNCTION(BlueprintCallable, Category = "InteractableActor")
 	void RefreshCachedMeshes();
 
@@ -57,7 +56,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DxWidget")
 	TObjectPtr<UDxWidgetConfigData> WidgetConfig;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DxWidget")
-	EDxWidgetFlag WidgetFlag = EDxWidgetFlag::None; // 현재 사용할 위젯 플래그
+	uint8 WidgetFlag = 0; // 현재 사용할 위젯 플래그
 
 	// TODO: ShortcutHighlight 변수 사용하는지 확인 필요
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "InteractableActor")

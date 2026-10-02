@@ -191,19 +191,8 @@ FString UDxLogSubsystem::GetLogDirectory()
 	{
 		return CachedLogDirectory;
 	}
-
-#if PLATFORM_WINDOWS
+	
 	return FPaths::LaunchDir() / TEXT("Logs") / TEXT("CustomLogs");
-#else
-	FString ExePath = FPlatformProcess::ExecutablePath();
-	FString ExeName = FPaths::GetBaseFilename(ExePath);
-	FString ProjectName;
-	if (!ExeName.Split(TEXT("-Linux-"), &ProjectName, nullptr))
-	{
-		ProjectName = ExeName;
-	}
-	return FPaths::LaunchDir() / ProjectName / TEXT("Logs") / TEXT("CustomLogs");
-#endif
 }
 
 void UDxLogSubsystem::ProcessLogBuffer()

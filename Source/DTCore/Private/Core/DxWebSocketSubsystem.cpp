@@ -104,13 +104,13 @@ void UDxWebSocketSubsystem::ConnectWebSocket()
 		return;
 	}
 
-	const UDTCoreSettings* CoreSettings = GetDefault<UDTCoreSettings>();
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
 	FString RuntimeWsUrl;
 	const FString WsUrl = DTCoreRuntimeConfig::TryReadRuntimeOverride(TEXT("WebSocketUrl"), RuntimeWsUrl)
 		? RuntimeWsUrl
-		: ensure(CoreSettings) && !CoreSettings->WebSocketUrl.IsEmpty()
-			? CoreSettings->WebSocketUrl
-			: TEXT("ws://localhost:61616");
+		: ensure(Settings) && !Settings->WebSocketUrl.IsEmpty()
+			? Settings->WebSocketUrl
+			: TEXT("ws://localhost:31000");
 
 	DX_LOG(GetWorld(), TEXT("[DEBUG] ConnectWebSocket URL: %s"), *WsUrl);
 
@@ -290,11 +290,42 @@ void UDxWebSocketSubsystem::HandleOnConnected(const FString& ProtocolVersion, co
 	{
 		ReceivedMessageEvent.BindDynamic(this, &UDxWebSocketSubsystem::ReceivedMessage);
 	}
-
+	
+	// 모든 토픽 구독이 완료된 후 OnConnected를 Broadcast하기 위해 카운터로 추적
+	const int32 TotalTopics = TopicRouteMap.Num();
+	if (TotalTopics == 0)
+	{
+		OnConnected.Broadcast(ProtocolVersion, SessionId, ServerString);
+		return;
+	}
+	
+	PendingSubscribeCount = TotalTopics;
+	PendingProtocolVersion = ProtocolVersion;
+	PendingSessionId = SessionId;
+	PendingServerString = ServerString;
+	
+	// CompletedMessageEvent는 UPROPERTY이므로 BindDynamic 사용 가능
+	CompletedMessageEvent.BindDynamic(this, &UDxWebSocketSubsystem::HandleSubscribeComplete);
+	
 	for (const auto& Pair : TopicRouteMap)
 	{
 		FString SubId = Subscribe(Pair.Key, ReceivedMessageEvent, CompletedMessageEvent);
 		SubscriptionIds.Add(Pair.Key, SubId);
+	}
+}
+
+void HandleSubscribeComplete::HandleSubscribeComplete(bool bSuccess, const FString& Error)
+{
+	if (!bSuccess)
+	{
+		DX_LOG(GetWorld(), TEXT("Subscribe 실패: %s"), *Error);
+	}
+	
+	PendingSubscribeCount--;
+	if (PendingSubscribeCount <= 0)
+	{
+		DX_LOG(GetWorld(), TEXT("모든 토픽 구독 완료 - OnConnected Broadcast"));
+		OnConnected.Broadcast(PendingProtocolVersion, PendingSessionId, PendingServerString);
 	}
 }
 

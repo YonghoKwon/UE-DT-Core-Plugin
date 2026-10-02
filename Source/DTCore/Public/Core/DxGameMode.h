@@ -16,6 +16,7 @@ class DTCORE_API ADxGameMode : public AGameModeBase
 
 	// Function
 public:
+	virtual void BeginPlay() override;
 private:
 protected:
 

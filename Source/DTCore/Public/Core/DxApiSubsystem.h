@@ -31,6 +31,10 @@ public:
 	void DxRequestApi(const FName& RowName, FDxApiCallback Callback);
 	UFUNCTION(BlueprintCallable, Category = "DxApi")
 	void DxRequestApiWithParameter(const FName& RowName, FDxApiCallback Callback, const TArray<FString>& Parameters);
+	UFUNCTION(BlueprintCallable, Category = "DxApi")
+	void DxRequestApiWithBody(const FName& RowName, FDxApiCallback Callback, const FString& Body);
+	UFUNCTION(BlueprintCallable, Category = "DxApi")
+	void DxRequestApiWithParameterAndBody(const FName& RowName, FDxApiCallback Callback, const TArray<FString>& Parameters, const FString& Body);
 
 	UFUNCTION(BlueprintPure, Category = "DxApi")
 	bool IsApiDataTableLoaded() const { return ApiDataTable != nullptr; }

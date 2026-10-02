@@ -107,13 +107,13 @@ void UDxWidget::CloseWidget()
 		}
 		else
 		{
-			UE_LOG(LogBase, Warning, TEXT("DxWidget::CloseWidget - DxWidgetSubsystem not found, removing from parent directly"));
+			DX_LOG(GetWorld(), TEXT("DxWidget::CloseWidget - DxWidgetSubsystem not found, removing from parent directly"));
 			RemoveFromParent();
 		}
 	}
 	else
 	{
-		UE_LOG(LogBase, Warning, TEXT("DxWidget::CloseWidget - GameInstance is null, removing from parent directly"));
+		DX_LOG(GetWorld(), TEXT("DxWidget::CloseWidget - GameInstance is null, removing from parent directly"));
 		RemoveFromParent();
 	}
 }
@@ -125,9 +125,10 @@ void UDxWidget::CloseWidgetAddLogic_Implementation()
 
 void UDxWidget::RetryWidget_Implementation()
 {
+	// 자식 클래스에서 오버라이드하여 구현 (재시도 로직이 필요할 경우)
 }
 
-UDxWidget* UDxWidget::OpenChildWidget(EDxWidgetFlag InChildFlag)
+UDxWidget* UDxWidget::OpenChildWidget(uint8 InChildFlag)
 {
 	if (UGameInstance* GI = GetGameInstance())
 	{
@@ -139,7 +140,7 @@ UDxWidget* UDxWidget::OpenChildWidget(EDxWidgetFlag InChildFlag)
 	return nullptr;
 }
 
-void UDxWidget::CloseChildWidget(EDxWidgetFlag InChildFlag)
+void UDxWidget::CloseChildWidget(uint8 InChildFlag)
 {
 	if (UGameInstance* GI = GetGameInstance())
 	{

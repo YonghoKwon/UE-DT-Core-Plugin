@@ -6,11 +6,12 @@
 
 class IStompClient;
 
+/** 토픽 수신 데이터를 어느 큐로 라우팅할지 결정하는 타입 */
 UENUM()
 enum class ETopicRouteType : uint8
 {
-	WebSocket,
-	Api,
+	WebSocket,  // → DxDataSubsystem::EnqueueWebSocketData (TC 전문)
+	Api,        // → DxDataSubsystem::EnqueueApiData (API 응답)
 };
 
 USTRUCT(BlueprintType)
@@ -78,6 +79,10 @@ private:
 
 	UFUNCTION(Category = "DxWebSocket")
 	void TryReconnect();
+	
+	/** 개별 토픽 구독 완료 시 호출 - 모든 구독이 완료되면 OnConnected를 Broadcast */
+	UFUNCTION(Category = "DxWebSocket")
+	void HandleSubscribeComplete(bool bSuccess, FString Error);
 protected:
 
 	// Variable
@@ -96,9 +101,17 @@ private:
 	const float MaxRetryDelay = 60.0f;    // 최대 대기 시간 (초)
 	const float BackoffMultiplier = 2.0f; // 시간 증가 배수
 
+	// 토픽별 구독 ID 관리 (Topic -> SubscriptionId)
 	TMap<FString, FString> SubscriptionIds;
 
+	// 토픽 → 라우팅 타입 매핑 (DTCoreSettings에서 읽어 Initialize()에서 구성)
 	TMap<FString, ETopicRouteType> TopicRouteMap;
+	
+	// 구독 완료 카운팅 (모든 구독 완료 후 OnConnected Broadcast)
+	int32 PendingSubscribeCount = 0;
+	FString PendingProtocolVersion;
+	FString PendingSessionId;
+	FString PendingServerString;
 protected:
 	TSharedPtr<IStompClient> StompClient;
 	TMap<FName, FString> LoginInfo;

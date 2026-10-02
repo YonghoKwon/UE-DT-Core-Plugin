@@ -32,15 +32,15 @@ DECLARE_LOG_CATEGORY_EXTERN(LogDx, Log, All);
 #define DX_LOG(WorldContext, Format, ...) \
 { \
 /* 1. UE_LOG도 남겨둠 (Shipping에서 -log 옵션으로 볼 수 있음) */ \
-UE_LOG(LogBase, Log, Format, ##__VA_ARGS__); \
+UE_LOG(LogTemp, Log, Format, ##__VA_ARGS__); \
 \
 /* 2. Subsystem을 통해 파일로 비동기 저장 */ \
-if (UWorld* World = WorldContext) \
+if (UWorld* DxLog_World = WorldContext) \
 { \
-if (UGameInstance* GI = World->GetGameInstance()) \
+if (UGameInstance* DxLog_GI = DxLog_World_->GetGameInstance()) \
 { \
 /* GetSubsystem은 매우 빠르므로 매번 호출해도 괜찮습니다 */ \
-if (UDxLogSubsystem* LogSys = GI->GetSubsystem<UDxLogSubsystem>()) \
+if (UDxLogSubsystem* LogSys = DxLog_GI_->GetSubsystem<UDxLogSubsystem>()) \
 { \
 FString Msg = FString::Printf(Format, ##__VA_ARGS__); \
 LogSys->WriteLog(Msg, false); /* bPrintToScreen = false */ \
@@ -57,7 +57,7 @@ LogSys->WriteLog(Msg, false); /* bPrintToScreen = false */ \
 #define DX_LOG(WorldContext, Format, ...) \
 { \
 /* 1. UE_LOG 출력 */ \
-UE_LOG(LogBase, Log, Format, ##__VA_ARGS__); \
+UE_LOG(LogTemp, Log, Format, ##__VA_ARGS__); \
 \
 /* 2. 화면 출력 (Print String 효과) */ \
 FString Msg = FString::Printf(Format, ##__VA_ARGS__); \

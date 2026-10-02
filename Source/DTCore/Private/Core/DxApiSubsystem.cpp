@@ -185,6 +185,68 @@ void UDxApiSubsystem::DxRequestApiWithParameter(const FName& RowName, FDxApiCall
 	DxHttpCall(FullUrl, MethodType, TEXT(""), DefaultHeaders, Callback);
 }
 
+void UDxApiSubsystem::DxRequestApiWithBody(const FName& RowName, FDxApiCallback Callback, const FString& Body)
+{
+	if (!ApiDataTable)
+	{
+		DX_LOG(GetWorld(), TEXT("DxRequestApi: ApiDataTable is not set."));
+		Callback.ExecuteIfBound(false, 0, TEXT("ApiDataTable is not set"));
+		return;
+	}
+	
+	FApiStruct* ApiData = ApiDataTable->FindRow<FApiStruct>(RowName, TEXT("DxRequestApiWithBody"));
+	if (!ApiData)
+	{
+		DX_LOG(GetWorld(), TEXT("DxRequestApiWithBody: Row '%s' not found in ApiDataTable."), *RowName.ToString());
+		Callback.ExecuteIfBound(false, 0, FString::Printf(TEXT("Row '%s' not found"), *RowName.ToString()));
+		return;
+	}
+	
+	FString ServerUrl = GetServerUrl(ApiData->ApiType);
+	FString MethodType = GetHttpStr(ApiData->ApiMethod);
+	FString FullUrl = ServerUrl + ApiData->ApiUrl;
+	
+	TMap<FString, FString> DefaultHeaders;
+	DefaultHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
+	
+	DxHttpCall(FullUrl, MethodType, TEXT(""), DefaultHeaders, Callback);
+}
+
+void UDxApiSubsystem::DxRequestApiWithParameterAndBody(const FName& RowName, FDxApiCallback Callback, const TArray<FString>& Parameters, const FString& Body)
+{
+	if (!ApiDataTable)
+	{
+		DX_LOG(GetWorld(), TEXT("DxRequestApiWithParameterAndBody: ApiDataTable is not set."));
+		Callback.ExecuteIfBound(false, 0, TEXT("ApiDataTable is not set"));
+		return;
+	}
+	
+	FApiStruct* ApiData = ApiDataTable->FindRow<FApiStruct>(RowName, TEXT("DxRequestApiWithParameterAndBody"));
+	if (!ApiData)
+	{
+		DX_LOG(GetWorld(), TEXT("DxRequestApiWithParameterAndBody: Row '%s' not found in ApiDataTable."), *RowName.ToString());
+		Callback.ExecuteIfBound(false, 0, FString::Printf(TEXT("Row '%s' not found"), *RowName.ToString()));
+		return;
+	}
+	
+	FString ServerUrl = GetServerUrl(ApiData->ApiType);
+	FString MethodType = GetHttpStr(ApiData->ApiMethod);
+	FString FullUrl = ServerUrl + ApiData->ApiUrl;
+	
+	for (const FString& PathParam : Parameters)
+	{
+		if (!PathParam.IsEmpty())
+		{
+			FullUrl += TEXT("/") + PathParam;
+		}
+	}
+	
+	TMap<FString, FString> DefaultHeaders;
+	DefaultHeaders.Add(TEXT("Content-Type"), TEXT("application/json"));
+	
+	DxHttpCall(FullUrl, MethodType, TEXT(""), DefaultHeaders, Callback);
+}
+
 void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request, TSharedPtr<IHttpResponse, ESPMode::ThreadSafe> Response, bool bWasSuccessful, FDxHttpRequestContext Context)
 {
 	// 응답이 왔으므로 (성공이든 실패든) 추적 배열에서 제거

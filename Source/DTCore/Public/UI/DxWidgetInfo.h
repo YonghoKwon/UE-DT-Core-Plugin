@@ -5,6 +5,7 @@
 
 class UDxWidget;
 
+// 위젯 정보를 담는 구조체
 USTRUCT(BlueprintType)
 struct FWidgetInfo
 {

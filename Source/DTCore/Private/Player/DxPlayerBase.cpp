@@ -36,13 +36,26 @@ ADxPlayerBase::ADxPlayerBase()
 void ADxPlayerBase::BeginPlay()
 {
 	Super::BeginPlay();
+	
+	// 방어 로직: 어떤 이유(핫 리로드/BP 컴포넌트 트리 문제 등)로든 포인터가 비어있으면 재획득 시도
+	if (!SpringAramComponent)
+	{
+		SpringArmComponent = FindComponentByClass<USpringArmComponent>();
+		DX_LOG(GetWorld(), TEXT("SpringArmComponent was null in BeginPlay. Re-acquired: %s"), SpringArmComponent ? TEXT("Success") : TEXT("Failed"));
+	}
+	if (!CameraComponent)
+	{
+		CameraComponent = FindComponentByClass<UCameraComponent>();
+		DX_LOG(GetWorld(), TEXT("CameraComponent was null in BeginPlay. Re-acquired: %s"), CameraComponent ? TEXT("Success") : TEXT("Failed"));
+	}
+	
 	if (CameraComponent)
 	{
 		CameraComponent->bUsePawnControlRotation = true;
 	}
 	else
 	{
-		UE_LOG(LogBase, Error, TEXT("CameraComponent is null"));
+		DX_LOG(GetWorld(), TEXT("CameraComponent is null in ADxPlayerBase::BeginPlay"));
 	}
 	if (ADxPlayerControllerBase* DxPlayerController = Cast<ADxPlayerControllerBase>(GetController()))
 	{
@@ -82,7 +95,7 @@ void ADxPlayerBase::Look(const FVector2D& LookVector)
 {
 	if (!Controller)
 	{
-		UE_LOG(LogBase, Error, TEXT("Controller is null in Look!"));
+		DX_LOG(GetWorld(), TEXT("Controller is null in Look!"));
 		return;
 	}
 
@@ -141,4 +154,13 @@ void ADxPlayerBase::MoveUpDown(float Value)
 	NewLocation.Z = FMath::Clamp(NewLocation.Z, 0.0f, 72625.0f);
 
 	SetActorLocation(NewLocation);
+}
+
+// 마우스 휠 입력 처리 (기본 동작: 이동 속도 조절)
+void ADxPlayerBase::HandleMouseWheel(float RawValue, float Step)
+{
+	if (RawValue == 0.f) return;
+	
+	const float NewSpeed = ControlSpeed + RawValue * Step;
+	SetControlSpeed(NewSpeed);
 }

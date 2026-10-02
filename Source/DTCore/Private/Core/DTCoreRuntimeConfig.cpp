@@ -44,6 +44,15 @@ namespace DTCoreRuntimeConfig
 		TArray<FString> GetRuntimeConfigCandidatePaths()
 		{
 			TArray<FString> Paths;
+			
+			// 플랫폼별 ini 파일명 (컴파일 타임 결정)
+#if PLATFORM_WINDOWS
+			const FString PlatformIniRelPath = TEXT("Windows/WindowsGame.ini");
+#elif PLATFORM_LINUX
+			const FString PlatformIniRelPath = TEXT("Linux/LinuxGame.ini");
+#else
+			const FString PlatformIniRelPath = TEXT("");
+#endif
 
 			// 1순위: Unreal이 계산한 ProjectDir 기준. 패키징에서는 보통 <PackageRoot>/<ProjectName>/ 를 가리킨다.
 			AddUniqueRuntimePath(Paths, FPaths::ProjectDir() / TEXT("Config") / TEXT("Game.ini"));
@@ -57,6 +66,16 @@ namespace DTCoreRuntimeConfig
 			// 4순위: 실행 파일 폴더가 패키지 루트(예: Windows/)인 경우.
 			AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / FApp::GetProjectName() / TEXT("Config") / TEXT("Game.ini"));
 
+			// [5~8순위] 플랫폼별 Game.ini (Windows/WindowsGame.ini, Linux/LinuxGame.ini)
+			// Game.ini 값이 모두 비어있을 때 플랫폼별 기본값으로 폴백됨
+			if (!PathformIniRelPath.IsEmpty())
+			{
+				AddUniqueRuntimePath(Paths, FPaths::ProjectDir() / TEXT("Config") / PlatformIniRelPath);
+				AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / TEXT("Config") / PlatformIniRelPath);
+				AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / TEXT("../../Config") / PlatformIniRelPath);
+				AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / FApp::GetProjectName / TEXT("Config") / PlatformIniRelPath);
+			}
+			
 			return Paths;
 		}
 

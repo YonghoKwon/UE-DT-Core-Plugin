@@ -1,10 +1,11 @@
 ﻿#include "Player/DxPlayerControllerBase.h"
 
+#inclued "DTCore.h"
 #include "Player/DxPlayerBase.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InteractableActor/InteractableActor.h"
-
+#include "Core/DxWidgetSubsystem.h"
 
 ADxPlayerControllerBase::ADxPlayerControllerBase()
 {
@@ -45,11 +46,6 @@ void ADxPlayerControllerBase::SetupInputComponent()
 
 		EnhancedInputComponent->BindAction(RightMouseButtonAction, ETriggerEvent::Triggered, this, &ADxPlayerControllerBase::ClickRightMouseButton);
 		EnhancedInputComponent->BindAction(LeftMouseButtonAction, ETriggerEvent::Triggered, this, &ADxPlayerControllerBase::ClickLeftMouseButton);
-
-		if (TestPimsKeyAction)
-		{
-			EnhancedInputComponent->BindAction(TestPimsKeyAction, ETriggerEvent::Triggered, this, &ADxPlayerControllerBase::HandleTestPimsKeyPressed);
-		}
 
 		// 일반 Number 버튼 추가 (추가 바인딩 필요 시)
 		// for (int32 i = 0; i < NumberKeyActions.Num(); ++i)
@@ -121,30 +117,96 @@ void ADxPlayerControllerBase::Look(const FInputActionValue& Value)
 		DxPlayer->Look(LookVector);
 	}
 }
-// 배속 제어
+// 배속(또는 줌) 제어 - 실제 동작은 Pawn(HandleMouseWheel)에서 결정
 void ADxPlayerControllerBase::ControlMoveSpeed(const FInputActionValue& Value)
 {
-	const float value = GetPlayerControlSpeed() + Value.Get<float>() * ControlSpeedStep;
-	if (value == 0.f) return;
+	const float RawValue = Value.Get<float>();
+	if (RawValue == 0.f) return;
+	
+	// 마우스가 UMG 위젯(예: ScrollBox) 위에 있으면 위젯 스크롤과 겹치지 않도록 카메라 줌/속도 조절을 막는다.
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UDxWidgetSubsystem* WidgetSubsystem = GI->GetSubsystem<UDxWidgetSubsystem>())
+		{
+			if (WidgetSubsystem->IsMouseOverAnyWidget())
+			{
+				return;
+			}
+		}
+	}
 
 	if (ADxPlayerBase* DxPlayer = Cast<ADxPlayerBase>(GetPawn()))
 	{
-		DxPlayer->SetControlSpeed(value);
+		DxPlayer->HandleMouseWheel(RawValue, ControlSpeedStep);
 	}
 }
 
 void ADxPlayerControllerBase::ClickLeftMouseButton(const FInputActionValue& Value)
 {
 	const bool value = Value.Get<bool>();
+	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0;
+	
+	// [진단용 로그] 실제 입력 이벤트 패턴 확인 (PixelStreaming 다중클릭 문제 추적)
+	DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] value=%s, bWasDown=%s, Time=%.4f"),
+		value ? TEXT("true(Press)") : TEXT("false(Release)"),
+		bWasLeftMouseButtonDown ? TEXT("true") : TEXT("false"),
+		Now);
 
-	if (PossibleClick && !value) // 마우스 버튼을 뗐을 때만 처리
+	if (Value)
 	{
-		// 현재 호버된 InteractableActor를 클릭 (개별 메시든 전체 액터든 CurrentHoveredActor에 저장됨)
-		if (CurrentHoveredActor)
+		// PixelStreaming 환경에서는 동일 물릭 클릭에 대해 Press 가 중복 전달될 수 있으므로,
+		// 이미 눌려있는 상태에서 온 중복 Press는 무신한다.
+		if (bWasLeftMouseButtonDown)
 		{
-			CurrentHoveredActor->Click();
+			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] Ignored - duplicate Press while already down. Time=%.4f"), Now);
+			return;
 		}
+		bWasLeftMouseButtonDown = true;
+		
+		// 더블클릭 판정을 Press 타이밍 기준으로 수행한다.
+		// (Release 이벤트는 PixelStreaming 전송 과정에서 수십ms~수초까지 불규칙하게 지연되어
+		// 타이밍 기준으로 신뢰할 수 없음이 로그로 확인됨. Press는 지연이 짧고 일정함.
+		if (!PossibleClick || bIsWidgetUnderMouse)
+		{
+			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] Press ignored - PossibleClick=%s, WidgetUnderMouse=%s"),
+				PossibleClick ? TEXT("true") : TEXT("false"), bIsWidgetUnderMouse ? TEXT("true") : TEXT("false"));
+			return;
+		}
+		
+		if (!CurrentHoverdActor)
+		{
+			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] Press ignored - CurrentHoverdActor is null. Time=%.4f"), Now);
+			LastPressedActor = nullptr;
+			LastPressTime = -1.0;
+			return;
+		}
+		
+		const bool bIsSameActorAsLastPress = LastPressedActor.IsValid() && LastPressedActor.Get() == CurrentHoverdActor;
+		const bool bWithinDoubleClickWindow = LastPressTime >= 0.0 && (Now - LastPressTime) <= static_cast<double>(DoubleClickPressThreshold);
+		
+		if (bIsSameActorAsLastPress && bWithinDoubleClickWindow)
+		{
+			// 더블클릭 확정 (Press-Press 간격 기준)
+			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] CONFIRMED double click by PRESS timing (delta=%.4f) -> Click() CALLED. Actor=%s, Time=%.4f"),
+				Now - LastPressTime, *CurrentHoverdActor->GetName(), Now);
+			
+			LastPressedActor = nullptr;
+			LastPressTime = -1.0;
+			CurrentHoverdActor->Click();
+		}
+		else
+		{
+			// 첫 번째 클릭 후보로 기록, 다음 Press를 기다림
+			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] FIRST press registered - Actor=%s, waiting for second press within %.2fs"),
+				*CurrentHoverdActor->GetName(), DoubleClickPressThreshold);
+			LastPressedActor = CurrentHoverdActor;
+			LastPressTime = Now;
+		}
+		return;
 	}
+
+	// value == false (Release) - 더블클릭 판정에는 사용하지 않고, 눌림 상태 플래그만 해제한다.
+	bWasLeftMouseButtonDown = false;
 }
 
 // 우클릭 제어
@@ -172,14 +234,30 @@ void ADxPlayerControllerBase::ClickRightMouseButton(const FInputActionValue& Val
 	}
 }
 
-void ADxPlayerControllerBase::HandleTestPimsKeyPressed(const FInputActionValue& Value)
-{
-	OnTestPimsKeyPressed.Broadcast();
-}
-
 // 마우스 호버 감지
 void ADxPlayerControllerBase::CheckMouseHover()
 {
+	// 오픈된 DxWidget 위에 마우스가 있으면 3D 호버/클릭 처리 차단
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (UDxWidgetSubsystem* WidgetSubsystem = GI->GetSubsystem<UDxWidgetSubsystem>())
+		{
+			if (WidgetSubsystem->IsMouseOverAnyWidget())
+			{
+				bIsWidgetUnderMouse = true;
+				// 기존에 호버된 3D 액터가 있으면 Unhover 처리
+				if (CurrentHoverdActor) 
+				{
+					CurrentHoverdActor->OnCursorUnhover();
+					CurrentHoverdActor = nullptr;
+					CurrentHoverMesh = nullptr;
+				}
+				return;
+			}
+		}
+	}
+	bIsWidgetUnderMouse = false;
+	
 	// 마우스 위치 계산 (Tick에서 호출 조건 확인 후 실행됨)
 	FVector WorldLocation, WorldDirection;
 	if (!DeprojectMousePositionToWorld(WorldLocation, WorldDirection))
@@ -206,11 +284,12 @@ void ADxPlayerControllerBase::CheckMouseHover()
 	FVector Start = WorldLocation;
 	FVector End = Start + (WorldDirection * 150000.0f); // 100km
 
-	// 라인 트레이스
+	// Single → Multi 로 변경하여 모든 히트를 수집
 	GetWorld()->LineTraceMultiByObjectType(
 		HitResults, Start, End, ObjectQueryParams, QueryParams
 	);
 
+	// GameTraceChannel1(Test-> Alarm 등) 오브젝트를 최우선으로 선택
 	const FHitResult* BestHit = nullptr;
 	for (const FHitResult& Hit : HitResults)
 	{

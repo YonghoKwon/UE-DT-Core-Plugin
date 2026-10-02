@@ -39,11 +39,14 @@ public:
 	UFUNCTION()
 	void CycleControlSpeed(); // 속도 레벨 순환
 	UFUNCTION()
-	void Look(const FVector2D& LookVector);
+	virtual void Look(const FVector2D& LookVector);
 	UFUNCTION()
 	virtual void Move(const FVector2D& MovementVector);
 	UFUNCTION()
 	virtual void MoveUpDown(float Value);
+	// 마우스 휠 입력 처리 (기본: 이동 속도 조절, Dock 등에서 오버라이드하여 줌으로 변경 가능)
+	UFUNCTION()
+	virtual void HandleMouseWheel(float RawValue, float Step);
 private:
 
 protected:
