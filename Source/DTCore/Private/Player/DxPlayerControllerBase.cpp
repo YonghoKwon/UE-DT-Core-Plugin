@@ -144,7 +144,17 @@ void ADxPlayerControllerBase::ControlMoveSpeed(const FInputActionValue& Value)
 void ADxPlayerControllerBase::ClickLeftMouseButton(const FInputActionValue& Value)
 {
 	const bool value = Value.Get<bool>();
-	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0;
+	double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0;
+#if WITH_DEV_AUTOMATION_TESTS
+	if (InputClockForTests) Now=InputClockForTests();
+#endif
+	if (ClickActivationPolicy==EDxClickActivationPolicy::SingleRelease)
+	{
+		if (value) { if (!bWasLeftMouseButtonDown) bWasLeftMouseButtonDown=true; return; }
+		const bool WasPressed=bWasLeftMouseButtonDown; bWasLeftMouseButtonDown=false;
+		if (WasPressed && PossibleClick && !bIsWidgetUnderMouse && IsValid(CurrentHoveredActor)) ActivateHoveredActor();
+		return;
+	}
 	
 	// [진단용 로그] 실제 입력 이벤트 패턴 확인 (PixelStreaming 다중클릭 문제 추적)
 	DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] value=%s, bWasDown=%s, Time=%.4f"),
@@ -192,7 +202,7 @@ void ADxPlayerControllerBase::ClickLeftMouseButton(const FInputActionValue& Valu
 			
 			LastPressedActor = nullptr;
 			LastPressTime = -1.0;
-			CurrentHoveredActor->Click();
+			ActivateHoveredActor();
 		}
 		else
 		{
@@ -207,6 +217,15 @@ void ADxPlayerControllerBase::ClickLeftMouseButton(const FInputActionValue& Valu
 
 	// value == false (Release) - 더블클릭 판정에는 사용하지 않고, 눌림 상태 플래그만 해제한다.
 	bWasLeftMouseButtonDown = false;
+}
+
+void ADxPlayerControllerBase::ActivateHoveredActor()
+{
+	if (!IsValid(CurrentHoveredActor)) return;
+#if WITH_DEV_AUTOMATION_TESTS
+	if (ClickSinkForTests) { ClickSinkForTests(CurrentHoveredActor); return; }
+#endif
+	CurrentHoveredActor->Click();
 }
 
 // 우클릭 제어

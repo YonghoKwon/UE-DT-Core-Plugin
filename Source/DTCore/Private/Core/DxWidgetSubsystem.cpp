@@ -29,6 +29,7 @@ void UDxWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UDxWidgetSubsystem::Deinitialize()
 {
+	ExternalInputBlockers.Reset();
 	Super::Deinitialize();
 }
 
@@ -135,7 +136,7 @@ UDxWidget* UDxWidgetSubsystem::OpenWidgetFromWidget(UDxWidget* ParentDxWidget, u
 
 void UDxWidgetSubsystem::CloseWidget(UDxWidget* CloseWidget)
 {
-	if (!IsValid(CloseWidget)) return;
+	if (!IsValid(CloseWidget) || !CloseWidget->TryBeginClose()) return;
 
 	// 1. 자식 위젯부터 재귀적으로 닫기
 	TArray<UDxWidget*> ChildrenToClose = CloseWidget->ChildWidgets;
@@ -193,6 +194,8 @@ TArray<TObjectPtr<UDxWidget>> UDxWidgetSubsystem::GetOpenWidgets()
 
 bool UDxWidgetSubsystem::IsMouseOverAnyWidget() const
 {
+	for (const auto& Weak:ExternalInputBlockers)
+		if (const auto* Widget=Weak.Get(); Widget && Widget->IsVisible() && Widget->IsHovered()) return true;
 	// 1. OpenWidgets 배열 체크 (동적으로 생성된 위젯들)
 	for (const UDxWidget* Widget : OpenWidgets)
 	{
@@ -211,6 +214,14 @@ bool UDxWidgetSubsystem::IsMouseOverAnyWidget() const
 	
 	return false;
 }
+
+void UDxWidgetSubsystem::RegisterExternalInputBlocker(UWidget* Widget)
+{
+	ExternalInputBlockers.RemoveAll([](const auto& Item) { return !Item.IsValid(); });
+	if (IsValid(Widget)) ExternalInputBlockers.AddUnique(Widget);
+}
+void UDxWidgetSubsystem::UnregisterExternalInputBlocker(UWidget* Widget)
+{ ExternalInputBlockers.RemoveAll([Widget](const auto& Item) { return !Item.IsValid() || Item.Get()==Widget; }); }
 
 UDxWidget* UDxWidgetSubsystem::CreateWidgetInternal(TSubclassOf<UDxWidget> WidgetClass, const FVector2D& Position,
 	AInteractableActor* OwnerActor, UDxWidget* ParentWidget, uint8 Flag)

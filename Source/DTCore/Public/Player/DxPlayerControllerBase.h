@@ -9,6 +9,9 @@
 
 class ADxPlayerBase;
 
+UENUM(BlueprintType)
+enum class EDxClickActivationPolicy : uint8 { DoublePress, SingleRelease };
+
 UCLASS()
 class DTCORE_API ADxPlayerControllerBase : public APlayerController
 {
@@ -17,6 +20,8 @@ class DTCORE_API ADxPlayerControllerBase : public APlayerController
 	// 함수
 public:
 	ADxPlayerControllerBase();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Player|Input")
+	EDxClickActivationPolicy ClickActivationPolicy = EDxClickActivationPolicy::DoublePress;
 	virtual void BeginPlay() override;
 	UFUNCTION()
 	void SetUIMoveInput(const FVector2D& MoveInput);
@@ -36,6 +41,12 @@ public:
 	void ClickRightMouseButton(const FInputActionValue& Value);
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FDTCoreInputPolicyTest;
+	TFunction<double()> InputClockForTests;
+	TFunction<void(AActor*)> ClickSinkForTests;
+#endif
+	void ActivateHoveredActor();
 
 protected:
 	virtual void SetupInputComponent() override;

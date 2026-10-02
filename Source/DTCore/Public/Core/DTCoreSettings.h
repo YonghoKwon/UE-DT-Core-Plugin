@@ -84,4 +84,6 @@ public:
 	// 빈 값은 기존 LaunchDir/Logs/CustomLogs를 유지한다. 상대 경로는 Saved 기준이다.
 	UPROPERTY(Config, EditAnywhere, Category="DTCore|Logging")
 	FString LogDirectory;
+	UPROPERTY(Config, EditAnywhere, Category="DTCore|Debug")
+	bool bShowFpsOnBeginPlay = false;
 };

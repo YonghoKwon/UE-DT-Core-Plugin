@@ -51,6 +51,7 @@ void UDxWidget::NativePreConstruct()
 
 void UDxWidget::NativeConstruct()
 {
+	bCloseStarted=false;
 	Super::NativeConstruct();
 
 	if (Btn_Close)
@@ -103,24 +104,31 @@ void UDxWidget::CloseWidget()
 		if (UDxWidgetSubsystem* WidgetSubsystem = GI->GetSubsystem<UDxWidgetSubsystem>())
 		{
 			WidgetSubsystem->CloseWidget(this);
-			CloseWidgetAddLogic_Implementation();
 		}
 		else
 		{
 			DX_LOG(GetWorld(), TEXT("DxWidget::CloseWidget - DxWidgetSubsystem not found, removing from parent directly"));
-			RemoveFromParent();
+			if (TryBeginClose()) RemoveFromParent();
 		}
 	}
 	else
 	{
 		DX_LOG(GetWorld(), TEXT("DxWidget::CloseWidget - GameInstance is null, removing from parent directly"));
-		RemoveFromParent();
+		if (TryBeginClose()) RemoveFromParent();
 	}
 }
 
 void UDxWidget::CloseWidgetAddLogic_Implementation()
 {
 	// 자식 클래스에서 오버라이드하여 구현 (닫을 때 세부 로직이 필요할 경우)
+}
+
+bool UDxWidget::TryBeginClose()
+{
+	if (bCloseStarted) return false;
+	bCloseStarted=true;
+	CloseWidgetAddLogic();
+	return true;
 }
 
 void UDxWidget::RetryWidget_Implementation()
