@@ -38,7 +38,7 @@ void ADxPlayerBase::BeginPlay()
 	Super::BeginPlay();
 	
 	// 방어 로직: 어떤 이유(핫 리로드/BP 컴포넌트 트리 문제 등)로든 포인터가 비어있으면 재획득 시도
-	if (!SpringAramComponent)
+	if (!SpringArmComponent)
 	{
 		SpringArmComponent = FindComponentByClass<USpringArmComponent>();
 		DX_LOG(GetWorld(), TEXT("SpringArmComponent was null in BeginPlay. Re-acquired: %s"), SpringArmComponent ? TEXT("Success") : TEXT("Failed"));

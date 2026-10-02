@@ -37,10 +37,10 @@ UE_LOG(LogTemp, Log, Format, ##__VA_ARGS__); \
 /* 2. Subsystem을 통해 파일로 비동기 저장 */ \
 if (UWorld* DxLog_World = WorldContext) \
 { \
-if (UGameInstance* DxLog_GI = DxLog_World_->GetGameInstance()) \
+if (UGameInstance* DxLog_GI = DxLog_World->GetGameInstance()) \
 { \
 /* GetSubsystem은 매우 빠르므로 매번 호출해도 괜찮습니다 */ \
-if (UDxLogSubsystem* LogSys = DxLog_GI_->GetSubsystem<UDxLogSubsystem>()) \
+if (UDxLogSubsystem* LogSys = DxLog_GI->GetSubsystem<UDxLogSubsystem>()) \
 { \
 FString Msg = FString::Printf(Format, ##__VA_ARGS__); \
 LogSys->WriteLog(Msg, false); /* bPrintToScreen = false */ \
