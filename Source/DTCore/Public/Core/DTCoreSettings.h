@@ -77,4 +77,11 @@ public:
 	 */
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|UI")
 	TArray<uint8> NoDuplicateCheckFlags;
+
+	UPROPERTY(Config, EditAnywhere, Category="DTCore|Network|WebSocket", meta=(ClampMin="0.1"))
+	float SubscriptionReceiptTimeoutSeconds = 5.0f;
+
+	// 빈 값은 기존 LaunchDir/Logs/CustomLogs를 유지한다. 상대 경로는 Saved 기준이다.
+	UPROPERTY(Config, EditAnywhere, Category="DTCore|Logging")
+	FString LogDirectory;
 };

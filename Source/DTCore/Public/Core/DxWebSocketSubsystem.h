@@ -5,6 +5,18 @@
 #include "DxWebSocketSubsystem.generated.h"
 
 class IStompClient;
+struct FDxSubscriptionOperation;
+
+UENUM(BlueprintType)
+enum class EDxSubscriptionState : uint8 { Pending, Ready, Failed, TimedOut };
+USTRUCT(BlueprintType)
+struct FDTCoreSubscriptionStatus
+{
+	GENERATED_BODY()
+	UPROPERTY(BlueprintReadOnly, Category="STOMP") FString Topic;
+	UPROPERTY(BlueprintReadOnly, Category="STOMP") EDxSubscriptionState State = EDxSubscriptionState::Pending;
+	UPROPERTY(BlueprintReadOnly, Category="STOMP") FString Error;
+};
 
 /** 토픽 수신 데이터를 어느 큐로 라우팅할지 결정하는 타입 */
 UENUM()
@@ -42,6 +54,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FSTOMPConnectedEvent, FString, Pr
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSTOMPConnectionErrorEvent, FString, Error);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSTOMPErrorEvent, FString, Error);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSTOMPCloseEvent, FString, Reason);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FSTOMPSubscriptionsChanged);
 /**
  * 
  */
@@ -54,6 +67,9 @@ class DTCORE_API UDxWebSocketSubsystem : public UGameInstanceSubsystem
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
+	UFUNCTION(BlueprintPure, Category="DxWebSocket") bool IsTransportConnected() const { return bTransportConnected; }
+	UFUNCTION(BlueprintPure, Category="DxWebSocket") bool AreConfiguredSubscriptionsReady() const { return bSubscriptionsReady; }
+	UFUNCTION(BlueprintPure, Category="DxWebSocket") TArray<FDTCoreSubscriptionStatus> GetSubscriptionStatuses() const;
 
 	UFUNCTION(Category = "DxWebSocket")
 	void ConnectWebSocket();
@@ -68,6 +84,15 @@ public:
 	UFUNCTION(Category = "DxWebSocket")
 	void Unsubscribe(const FString& Subscription, const FSTOMPRequestCompleted& CompletionCallback);
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FDTCoreSubscriptionLifecycleTest;
+#endif
+	void BeginConnectionAttempt();
+	void CancelSubscriptionOperations();
+	void RecordSubscriptionResult(const FString& Topic, uint64 Generation, bool bSuccess, const FString& Error);
+	void FinishSubscriptionBatch();
+	FString SubscribeInternal(const FString& Destination, const FSTOMPSubscriptionEvent& EventCallback, TFunction<void(bool,const FString&)> Completion);
+	void CompleteOperation(const TSharedPtr<FDxSubscriptionOperation,ESPMode::ThreadSafe>& Operation, bool bSuccess, const FString& Error);
 	UFUNCTION(Category = "DxWebSocket")
 	void HandleOnConnected(const FString& ProtocolVersion, const FString& SessionId, const FString& ServerString);
 	UFUNCTION(Category = "DxWebSocket")
@@ -93,7 +118,17 @@ public:
 	FSTOMPRequestCompleted CompletedMessageEvent;
 	UPROPERTY(BlueprintReadOnly, Category = "DxWebSocket")
 	FSTOMPConnectedEvent OnConnected;
+	UPROPERTY(BlueprintAssignable, Category="DxWebSocket") FSTOMPConnectedEvent OnTransportConnected;
+	UPROPERTY(BlueprintAssignable, Category="DxWebSocket") FSTOMPSubscriptionsChanged OnSubscriptionsChanged;
 private:
+	bool bWantsConnection = false;
+	bool bIsShuttingDown = false;
+	bool bTransportConnected = false;
+	bool bSubscriptionsReady = false;
+	bool bReadyBroadcast = false;
+	uint64 ConnectionGeneration = 0;
+	TMap<FString,FDTCoreSubscriptionStatus> SubscriptionStatuses;
+	TArray<TSharedPtr<FDxSubscriptionOperation,ESPMode::ThreadSafe>> SubscriptionOperations;
 	FTimerHandle ReconnectTimerHandle; // 타이머 핸들
 	int32 RetryCount = 0;              // 현재 재시도 횟수
 
