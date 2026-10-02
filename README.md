@@ -4,6 +4,8 @@
 
 API 통신, WebSocket/STOMP 수신, 데이터 큐 처리, 객체 등록/검색, 위젯 관리, 로그, 플레이어/레벨 기반 기능, 센서/상태 컴포넌트 등을 하나의 재사용 가능한 Core 계층으로 제공하는 것을 목표로 합니다.
 
+2026-10-02: 동기화본 `b22af0b`의 새 int32/byte API를 유지한 안정화 source 기준은 `67d3605`입니다. HTTP Body/종료, 구독 준비/timeout, worker/log/registry 수명과 close/input 계약은 [소비 프로젝트 이전 안내](docs/MIGRATION_b22.md)를 확인하세요. 현재 소비 프로젝트와 격리 호스트 검증이며, 다른 실제 프로젝트의 무수정 호환이나 Binary BodyString 지원을 보장하지 않습니다.
+
 ---
 
 ## 1. 전체 목표
