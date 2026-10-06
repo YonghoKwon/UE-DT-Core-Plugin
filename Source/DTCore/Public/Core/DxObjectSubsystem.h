@@ -62,7 +62,8 @@ public:
 		return Cast<T>(FindObject(Category, Id));
 	}
 
-	// C++ 전용 스냅샷 조회가 필요할 때 사용합니다. Blueprint에서는 GetAllObjects/GetObjectIds를 우선 사용하세요.
+	// 내부 map의 임시 조회 포인터이며 복사본이 아니다. 등록/해제 후에는 다시 조회한다.
+	// Blueprint에서는 GetAllObjects/GetObjectIds를 우선 사용한다.
 	const TMap<FString, TObjectPtr<AActor>>* GetCategoryMap(FName Category) const;
 
 private:

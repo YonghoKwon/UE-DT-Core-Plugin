@@ -34,6 +34,7 @@ public:
 private:
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FDTCoreWorkerShutdownTest;
+	friend class FDTCoreQueueWorldCleanupTest;
 #endif
 	TFuture<void> ApiWorker;
 	TFuture<void> WebSocketWorker;
