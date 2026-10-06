@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "HAL/ThreadSafeBool.h"
+#include "Async/Future.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "DxLogSubsystem.generated.h"
 
@@ -26,6 +27,12 @@ public:
 	 */
 	void WriteLog(const FString& LogContent, bool bPrintToScreen = false, FString LogFileName = TEXT(""));
 private:
+	void StopAndFlush();
+	bool FlushLogs();
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FDTCoreLogFlushTest;
+	TFunction<bool(const FString&,const FString&)> WriterSinkForTests;
+#endif
 	void DeleteOldLogs(int32 RetentionDays = 7);
 	FString GetLogDirectory();
 	// [NEW] 로그 파일에 실제로 쓰는 함수 (백그라운드에서 실행됨)
@@ -41,8 +48,13 @@ private:
 	TArray<TPair<FString, FString>> LogBuffer; // <FileName, Content>
 	// [NEW] 버퍼 접근 시 충돌 방지용 뮤텍스
 	FCriticalSection BufferMutex;
+	FCriticalSection WriterMutex;
+	FCriticalSection ScheduleMutex;
+	TFuture<void> WriterTask;
+	TFuture<void> CleanupTask;
+	FThreadSafeBool bWriteFailed=false;
 	// [NEW] 현재 파일 쓰기 작업이 진행 중인지 체크
-	FThreadSafeBool bIsWriting;
+	FThreadSafeBool bIsWriting=false;
 	// 종료 중 새 비동기 작업을 제한하기 위한 플래그
 	FThreadSafeBool bIsShuttingDown = false;
 protected:
