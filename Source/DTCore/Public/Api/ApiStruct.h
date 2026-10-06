@@ -31,9 +31,9 @@ struct FApiStruct : public FTableRowBase
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "API")
-	EApiType ApiType;
+	EApiType ApiType = EApiType::Local;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "API")
-	EApiMethod ApiMethod;
+	EApiMethod ApiMethod = EApiMethod::Get;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "API")
 	FString ApiUrl;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "API")

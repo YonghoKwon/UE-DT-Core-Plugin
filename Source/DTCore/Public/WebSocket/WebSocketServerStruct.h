@@ -20,7 +20,7 @@ struct FWebSocketServerStruct : public FTableRowBase
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "WebSocketServer")
-	EWebSocketServer WebSocketServer;
+	EWebSocketServer WebSocketServer = EWebSocketServer::Local;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "WebSocketServer")
 	FString WebSocketServerUrl;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "WebSocketServer")

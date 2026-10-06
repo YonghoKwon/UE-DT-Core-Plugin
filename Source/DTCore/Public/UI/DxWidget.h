@@ -19,7 +19,7 @@ enum class EPlayerViewType : uint8
 	FreeView UMETA(DisplayName = "FreeView"),
 };
 /**
- * 
+ *
  */
 UCLASS()
 class DTCORE_API UDxWidget : public UUserWidget
@@ -39,6 +39,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "DxWidget")
 	void CloseWidget();
+	bool TryBeginClose();
+	void NotifyClosedOnce();
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "DxWidget")
 	void CloseWidgetAddLogic();
@@ -122,7 +124,11 @@ public:
 	// BringToFront는 정상 동작하면서 화면에서 제거되지 않아야 하는 위젯에 사용
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DxWidget")
 	bool bPresistent = false;
-	
+private:
+	bool bCloseStarted = false;
+	bool bCloseNotified = false;
+public:
+
 	// 나를 호출한 부모 위젯
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "DxWidget|Hierarchy")
 	TWeakObjectPtr<UDxWidget> ParentWidget;
