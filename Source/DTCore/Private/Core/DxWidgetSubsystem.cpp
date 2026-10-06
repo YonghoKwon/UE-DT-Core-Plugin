@@ -21,7 +21,7 @@ void UDxWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		{
 			LevelDataTable = Settings->LevelDataTable.LoadSynchronous();
 		}
-		
+
 		// 프로젝트 DefaultGame.ini에서 설정된 NoDuplicateCheckFlags 적용
 		NoDuplicateCheckFlags = Settings->NoDuplicateCheckFlags;
 	}
@@ -29,6 +29,7 @@ void UDxWidgetSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 void UDxWidgetSubsystem::Deinitialize()
 {
+	ExternalInputBlockers.Reset();
 	Super::Deinitialize();
 }
 
@@ -135,7 +136,7 @@ UDxWidget* UDxWidgetSubsystem::OpenWidgetFromWidget(UDxWidget* ParentDxWidget, u
 
 void UDxWidgetSubsystem::CloseWidget(UDxWidget* CloseWidget)
 {
-	if (!IsValid(CloseWidget)) return;
+	if (!IsValid(CloseWidget) || !CloseWidget->TryBeginClose()) return;
 
 	// 1. 자식 위젯부터 재귀적으로 닫기
 	TArray<UDxWidget*> ChildrenToClose = CloseWidget->ChildWidgets;
@@ -163,6 +164,7 @@ void UDxWidgetSubsystem::CloseWidget(UDxWidget* CloseWidget)
 
 	// 4. 화면 (Viewport 또는 부모 패널)에서 제거
 	CloseWidget->RemoveFromParent();
+	CloseWidget->NotifyClosedOnce();
 
 	// UE_LOG(LogTemp, Log, TEXT("CloseWidget: Widget '%s' closed successfully"), *CloseWidget->GetName());
 }
@@ -193,6 +195,8 @@ TArray<TObjectPtr<UDxWidget>> UDxWidgetSubsystem::GetOpenWidgets()
 
 bool UDxWidgetSubsystem::IsMouseOverAnyWidget() const
 {
+	for (const auto& Weak:ExternalInputBlockers)
+		if (const auto* Widget=Weak.Get(); Widget && Widget->IsVisible() && Widget->IsHovered()) return true;
 	// 1. OpenWidgets 배열 체크 (동적으로 생성된 위젯들)
 	for (const UDxWidget* Widget : OpenWidgets)
 	{
@@ -201,16 +205,24 @@ bool UDxWidgetSubsystem::IsMouseOverAnyWidget() const
 			return true;
 		}
 	}
-	
+
 	// 2. MainWidget 체크 (Blueprint에 직접 배치된 위젯들 포함)
 	// DxM7atNotify, DxM7atPimsFv, DxM7atCctvListFv 등이 여기 해당
 	if (IsValid(MainWidgetInstance) && MainWidgetInstance->IsHovered())
 	{
 		return true;
 	}
-	
+
 	return false;
 }
+
+void UDxWidgetSubsystem::RegisterExternalInputBlocker(UWidget* Widget)
+{
+	ExternalInputBlockers.RemoveAll([](const auto& Item) { return !Item.IsValid(); });
+	if (IsValid(Widget)) ExternalInputBlockers.AddUnique(Widget);
+}
+void UDxWidgetSubsystem::UnregisterExternalInputBlocker(UWidget* Widget)
+{ ExternalInputBlockers.RemoveAll([Widget](const auto& Item) { return !Item.IsValid() || Item.Get()==Widget; }); }
 
 UDxWidget* UDxWidgetSubsystem::CreateWidgetInternal(TSubclassOf<UDxWidget> WidgetClass, const FVector2D& Position,
 	AInteractableActor* OwnerActor, UDxWidget* ParentWidget, uint8 Flag)
@@ -312,7 +324,7 @@ void UDxWidgetSubsystem::BringToFront(UDxWidget* Widget)
 
 	// OpenWidgets에 포함된 위젯만 처리 (Top/Bottom 등 정적 위젯에 잘못된 패널에서 ZOrder를 변경하는 것을 방지)
 	if (!OpenWidgets.Contains(Widget)) return;
-	
+
 	if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Widget->Slot))
 	{
 		int32 MaxZOrder = 0;

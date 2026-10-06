@@ -122,7 +122,7 @@ void ADxPlayerControllerBase::ControlMoveSpeed(const FInputActionValue& Value)
 {
 	const float RawValue = Value.Get<float>();
 	if (RawValue == 0.f) return;
-	
+
 	// 마우스가 UMG 위젯(예: ScrollBox) 위에 있으면 위젯 스크롤과 겹치지 않도록 카메라 줌/속도 조절을 막는다.
 	if (UGameInstance* GI = GetGameInstance())
 	{
@@ -144,8 +144,18 @@ void ADxPlayerControllerBase::ControlMoveSpeed(const FInputActionValue& Value)
 void ADxPlayerControllerBase::ClickLeftMouseButton(const FInputActionValue& Value)
 {
 	const bool value = Value.Get<bool>();
-	const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0;
-	
+	double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0;
+#if WITH_DEV_AUTOMATION_TESTS
+	if (InputClockForTests) Now=InputClockForTests();
+#endif
+	if (ClickActivationPolicy==EDxClickActivationPolicy::SingleRelease)
+	{
+		if (value) { if (!bWasLeftMouseButtonDown) bWasLeftMouseButtonDown=true; return; }
+		const bool WasPressed=bWasLeftMouseButtonDown; bWasLeftMouseButtonDown=false;
+		if (WasPressed && PossibleClick && !bIsWidgetUnderMouse && IsValid(CurrentHoveredActor)) ActivateHoveredActor();
+		return;
+	}
+
 	// [진단용 로그] 실제 입력 이벤트 패턴 확인 (PixelStreaming 다중클릭 문제 추적)
 	DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] value=%s, bWasDown=%s, Time=%.4f"),
 		value ? TEXT("true(Press)") : TEXT("false(Release)"),
@@ -162,7 +172,7 @@ void ADxPlayerControllerBase::ClickLeftMouseButton(const FInputActionValue& Valu
 			return;
 		}
 		bWasLeftMouseButtonDown = true;
-		
+
 		// 더블클릭 판정을 Press 타이밍 기준으로 수행한다.
 		// (Release 이벤트는 PixelStreaming 전송 과정에서 수십ms~수초까지 불규칙하게 지연되어
 		// 타이밍 기준으로 신뢰할 수 없음이 로그로 확인됨. Press는 지연이 짧고 일정함.
@@ -172,27 +182,27 @@ void ADxPlayerControllerBase::ClickLeftMouseButton(const FInputActionValue& Valu
 				PossibleClick ? TEXT("true") : TEXT("false"), bIsWidgetUnderMouse ? TEXT("true") : TEXT("false"));
 			return;
 		}
-		
+
 		if (!CurrentHoveredActor)
 		{
-			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] Press ignored - CurrentHoveredActor is null. Time=%.4f"), Now);
+			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] Press ignored - CurrentHoverdActor is null. Time=%.4f"), Now);
 			LastPressedActor = nullptr;
 			LastPressTime = -1.0;
 			return;
 		}
-		
+
 		const bool bIsSameActorAsLastPress = LastPressedActor.IsValid() && LastPressedActor.Get() == CurrentHoveredActor;
 		const bool bWithinDoubleClickWindow = LastPressTime >= 0.0 && (Now - LastPressTime) <= static_cast<double>(DoubleClickPressThreshold);
-		
+
 		if (bIsSameActorAsLastPress && bWithinDoubleClickWindow)
 		{
 			// 더블클릭 확정 (Press-Press 간격 기준)
 			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] CONFIRMED double click by PRESS timing (delta=%.4f) -> Click() CALLED. Actor=%s, Time=%.4f"),
 				Now - LastPressTime, *CurrentHoveredActor->GetName(), Now);
-			
+
 			LastPressedActor = nullptr;
 			LastPressTime = -1.0;
-			CurrentHoveredActor->Click();
+			ActivateHoveredActor();
 		}
 		else
 		{
@@ -207,6 +217,15 @@ void ADxPlayerControllerBase::ClickLeftMouseButton(const FInputActionValue& Valu
 
 	// value == false (Release) - 더블클릭 판정에는 사용하지 않고, 눌림 상태 플래그만 해제한다.
 	bWasLeftMouseButtonDown = false;
+}
+
+void ADxPlayerControllerBase::ActivateHoveredActor()
+{
+	if (!IsValid(CurrentHoveredActor)) return;
+#if WITH_DEV_AUTOMATION_TESTS
+	if (ClickSinkForTests) { ClickSinkForTests(CurrentHoveredActor); return; }
+#endif
+	CurrentHoveredActor->Click();
 }
 
 // 우클릭 제어
@@ -246,7 +265,7 @@ void ADxPlayerControllerBase::CheckMouseHover()
 			{
 				bIsWidgetUnderMouse = true;
 				// 기존에 호버된 3D 액터가 있으면 Unhover 처리
-				if (CurrentHoveredActor) 
+				if (CurrentHoveredActor)
 				{
 					CurrentHoveredActor->OnCursorUnhover();
 					CurrentHoveredActor = nullptr;
@@ -257,7 +276,7 @@ void ADxPlayerControllerBase::CheckMouseHover()
 		}
 	}
 	bIsWidgetUnderMouse = false;
-	
+
 	// 마우스 위치 계산 (Tick에서 호출 조건 확인 후 실행됨)
 	FVector WorldLocation, WorldDirection;
 	if (!DeprojectMousePositionToWorld(WorldLocation, WorldDirection))
