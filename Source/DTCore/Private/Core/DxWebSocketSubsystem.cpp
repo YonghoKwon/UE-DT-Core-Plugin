@@ -314,7 +314,7 @@ void UDxWebSocketSubsystem::HandleOnConnected(const FString& ProtocolVersion, co
 	}
 }
 
-void HandleSubscribeComplete::HandleSubscribeComplete(bool bSuccess, const FString& Error)
+void UDxWebSocketSubsystem::HandleSubscribeComplete(bool bSuccess, FString Error)
 {
 	if (!bSuccess)
 	{

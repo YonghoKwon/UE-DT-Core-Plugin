@@ -14,7 +14,7 @@ AInteractableActor::AInteractableActor()
 void AInteractableActor::Click()
 {
 	DX_LOG(GetWorld(), TEXT("[InteractableActor::Click] ENTER - Actor=%s, Time=%.4f"),
-		*GetName(), GetWorld()->GetTimeSeconds() : -1.0);
+		*GetName(), GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0);
 	
 	// WidgetFlag가 비어있으면 리턴
 	if (WidgetFlag == 0)

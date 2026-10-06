@@ -1,6 +1,6 @@
 ﻿#include "Player/DxPlayerControllerBase.h"
 
-#inclued "DTCore.h"
+#include "DTCore.h"
 #include "Player/DxPlayerBase.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -152,7 +152,7 @@ void ADxPlayerControllerBase::ClickLeftMouseButton(const FInputActionValue& Valu
 		bWasLeftMouseButtonDown ? TEXT("true") : TEXT("false"),
 		Now);
 
-	if (Value)
+	if (value)
 	{
 		// PixelStreaming 환경에서는 동일 물릭 클릭에 대해 Press 가 중복 전달될 수 있으므로,
 		// 이미 눌려있는 상태에서 온 중복 Press는 무신한다.
@@ -173,33 +173,33 @@ void ADxPlayerControllerBase::ClickLeftMouseButton(const FInputActionValue& Valu
 			return;
 		}
 		
-		if (!CurrentHoverdActor)
+		if (!CurrentHoveredActor)
 		{
-			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] Press ignored - CurrentHoverdActor is null. Time=%.4f"), Now);
+			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] Press ignored - CurrentHoveredActor is null. Time=%.4f"), Now);
 			LastPressedActor = nullptr;
 			LastPressTime = -1.0;
 			return;
 		}
 		
-		const bool bIsSameActorAsLastPress = LastPressedActor.IsValid() && LastPressedActor.Get() == CurrentHoverdActor;
+		const bool bIsSameActorAsLastPress = LastPressedActor.IsValid() && LastPressedActor.Get() == CurrentHoveredActor;
 		const bool bWithinDoubleClickWindow = LastPressTime >= 0.0 && (Now - LastPressTime) <= static_cast<double>(DoubleClickPressThreshold);
 		
 		if (bIsSameActorAsLastPress && bWithinDoubleClickWindow)
 		{
 			// 더블클릭 확정 (Press-Press 간격 기준)
 			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] CONFIRMED double click by PRESS timing (delta=%.4f) -> Click() CALLED. Actor=%s, Time=%.4f"),
-				Now - LastPressTime, *CurrentHoverdActor->GetName(), Now);
+				Now - LastPressTime, *CurrentHoveredActor->GetName(), Now);
 			
 			LastPressedActor = nullptr;
 			LastPressTime = -1.0;
-			CurrentHoverdActor->Click();
+			CurrentHoveredActor->Click();
 		}
 		else
 		{
 			// 첫 번째 클릭 후보로 기록, 다음 Press를 기다림
 			DX_LOG(GetWorld(), TEXT("[ClickLeftMouseButton] FIRST press registered - Actor=%s, waiting for second press within %.2fs"),
-				*CurrentHoverdActor->GetName(), DoubleClickPressThreshold);
-			LastPressedActor = CurrentHoverdActor;
+				*CurrentHoveredActor->GetName(), DoubleClickPressThreshold);
+			LastPressedActor = CurrentHoveredActor;
 			LastPressTime = Now;
 		}
 		return;
@@ -246,11 +246,11 @@ void ADxPlayerControllerBase::CheckMouseHover()
 			{
 				bIsWidgetUnderMouse = true;
 				// 기존에 호버된 3D 액터가 있으면 Unhover 처리
-				if (CurrentHoverdActor) 
+				if (CurrentHoveredActor) 
 				{
-					CurrentHoverdActor->OnCursorUnhover();
-					CurrentHoverdActor = nullptr;
-					CurrentHoverMesh = nullptr;
+					CurrentHoveredActor->OnCursorUnhover();
+					CurrentHoveredActor = nullptr;
+					CurrentHoveredMesh = nullptr;
 				}
 				return;
 			}
