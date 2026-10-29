@@ -123,7 +123,7 @@ public:
 	// true이면 뷰 타입 전환(ChangePlayerViewType) 시 CloseWidget 대상에서 제외
 	// BringToFront는 정상 동작하면서 화면에서 제거되지 않아야 하는 위젯에 사용
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "DxWidget")
-	bool bPresistent = false;
+	bool bPersistent = false;
 private:
 	bool bCloseStarted = false;
 	bool bCloseNotified = false;

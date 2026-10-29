@@ -20,7 +20,7 @@ void AInteractableActor::Click()
 	if (WidgetFlag == 0)
 	{
 		// UE_LOG(LogBase, Warning, TEXT("InteractableActor::Click - WidgetFlag is empty!"));
-		DX_LOG(GetWorld(), TEXT("[InteractableActor::Click - WidgetFlag is empty!"));
+		DX_LOG(GetWorld(), TEXT("InteractableActor::Click - WidgetFlag is empty!"));
 		return;
 	}
 
