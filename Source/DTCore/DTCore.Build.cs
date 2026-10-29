@@ -29,5 +29,9 @@ public class DTCore : ModuleRules
 				"DeveloperSettings"
 			}
 		);
+		if (Target.bBuildEditor)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "UMGEditor", "Kismet", "BlueprintGraph", "KismetCompiler" });
+		}
 	}
 }
