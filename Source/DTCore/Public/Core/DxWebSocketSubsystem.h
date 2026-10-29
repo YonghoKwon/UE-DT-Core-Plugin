@@ -6,12 +6,12 @@
 
 class IStompClient;
 
-/** 호환용 구독 대상 목록 구분이며 실제 라우팅은 모두 MESSAGE_ID 기준이다. */
+/** 수신 Topic의 구분. 두 값 모두 WebSocket 큐(MESSAGE_ID 핸들러)로 전달하며, 수신 로그에 구분을 남긴다. */
 UENUM()
 enum class ETopicRouteType : uint8
 {
-	WebSocket,  // 구독 대상 목록이며 라우팅은 MESSAGE_ID 기준
-	Api,        // 구독 대상 목록이며 라우팅은 MESSAGE_ID 기준
+	WebSocket,  // WebSocketTopics: 일반 WebSocket(TC) 데이터
+	Api,        // ApiTopics: WebSocket으로 받는 Api 방식 데이터
 };
 
 UENUM(BlueprintType)

@@ -112,7 +112,7 @@ GameThread AsyncTask에서 Handler->ProcessStructData (최종 반영)
 ### 4.1 [해결] Topic 구독 목록과 MESSAGE_ID 라우팅 확정
 
 - 2026-10-29 소유자 결정: `WebSocketTopics`와 `ApiTopics`는 모두 구독 대상 목록이며 라우팅은 `MESSAGE_ID` 기준이다.
-- `ReceivedMessage()`의 중복 enum 분기를 제거하고 등록 Topic을 모두 `EnqueueWebSocketData`에 전달한다. 기존 동작은 유지한다.
+- `ReceivedMessage()`의 같은 동작 두 분기를 하나로 합치고 등록 Topic을 모두 `EnqueueWebSocketData`에 전달한다. 기존 동작은 유지하며, 수신마다 `RouteType`(WebSocket/Api)·Topic·길이를 로그로 남긴다.
 - `ETopicRouteType` enum과 `ApiTopics` Config 키는 호환을 위해 유지하고 주석을 바로잡았다.
 - `meta.resource`/`meta.action` API 응답은 HTTP 경로의 API Queue를 사용한다. STOMP에서 그 형식만 보내면 `MESSAGE_ID` 누락으로 버려지는 기존 동작은 바꾸지 않았다.
 - README 4.2절과 설정 표를 확정한 계약에 맞게 갱신했다. 추가 검증 결과는 `QUALITY_90.md`에 기록한다.
@@ -170,7 +170,7 @@ FString Key = FPaths::Combine(PascalResource, PascalAction);
 
 | 우선순위 | 항목 | 관련 절 |
 |---|---|---|
-| 해결 | 두 구독 목록 모두 MESSAGE_ID 라우팅 유지, 중복 분기와 문서 정리 | 4.1 |
+| 해결 | 두 구독 목록 모두 MESSAGE_ID 라우팅 유지, 분기 통합·RouteType 수신 로그·문서 정리 | 4.1 |
 | Medium | ParseToStruct 스레드 규칙 코드 수준 가드 | 4.4 |
 | Medium | ApiDataTable 로드 책임 일원화 | 4.2 |
 | 부분 해결 | 자체 Automation Test 도입, CI 미구성 | 4.6 |

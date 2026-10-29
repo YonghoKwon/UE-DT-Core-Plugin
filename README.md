@@ -131,7 +131,7 @@ Topic 라우팅 기준:
 | `WebSocketTopics` | `UDxDataSubsystem::EnqueueWebSocketData` |
 | `ApiTopics` | `UDxDataSubsystem::EnqueueWebSocketData` |
 
-두 설정은 모두 구독 대상 목록이며 라우팅은 `MESSAGE_ID` 기준입니다. `ETopicRouteType`과 `ApiTopics` 이름은 Config/소스 호환을 위해 유지합니다. 등록 Topic은 모두 WebSocket Queue로 전달하며 API Queue로 분기하지 않습니다. 이 동작은 소유자 결정으로 확정했습니다.
+`ApiTopics`는 WebSocket으로 받는 Api 방식 데이터를 일반 WebSocket 데이터와 구분하기 위한 목록입니다. 두 목록 모두 WebSocket Queue로 전달되고 `MESSAGE_ID` 핸들러가 처리하며, API Queue로는 보내지 않습니다(소유자 확인). 수신할 때마다 `ReceivedMessage: RouteType=<WebSocket|Api>, Topic=<토픽>, Bytes=<길이>` 로그를 남겨 어느 구분으로 들어왔는지 확인할 수 있습니다.
 
 상태는 `Disconnected → Connecting → Subscribing → Ready`이며 오류/종료 시 `Reconnecting`, 횟수 제한 도달 시 `GaveUp`으로 전환합니다. 상태가 실제로 바뀔 때에만 새 상태와 사유를 통지하며, 같은 재시도 포기 상태를 반복 통지하지 않습니다. 수동 Disconnect는 `Disconnected`이고 종료 중에는 상태 이벤트를 broadcast하지 않습니다. 조회·연결 제어 API는 GameThread에서 사용합니다.
 

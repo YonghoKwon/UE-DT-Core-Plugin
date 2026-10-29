@@ -237,7 +237,8 @@ void UDxWebSocketSubsystem::ReceivedMessage(const FWebSocketMessage& Message)
 		return;
 	}
 
-	if (!TopicRouteMap.Contains(Message.Destination))
+	const ETopicRouteType* RouteType = TopicRouteMap.Find(Message.Destination);
+	if (!RouteType)
 	{
 		DX_LOG(GetWorld(), TEXT("ReceivedMessage: 등록되지 않은 토픽 [%s]"), *Message.Destination);
 		return;
@@ -248,7 +249,10 @@ void UDxWebSocketSubsystem::ReceivedMessage(const FWebSocketMessage& Message)
 	UDxDataSubsystem* DS = GI->GetSubsystem<UDxDataSubsystem>();
 	if (!DS) return;
 
-	// 두 설정은 구독 대상 목록이며 실제 핸들러 라우팅은 MESSAGE_ID 기준이다.
+	// 두 RouteType 모두 WebSocket 큐(MESSAGE_ID 핸들러)로 보낸다.
+	// Api는 WebSocket으로 받는 Api 방식 데이터를 구분하기 위한 값이며, 어느 경로로 들어왔는지 로그로 남긴다.
+	const TCHAR* RouteName = *RouteType == ETopicRouteType::Api ? TEXT("Api") : TEXT("WebSocket");
+	DX_LOG(GetWorld(), TEXT("ReceivedMessage: RouteType=%s, Topic=%s, Bytes=%d"), RouteName, *Message.Destination, BodyString.Len());
 	DS->EnqueueWebSocketData(BodyString);
 }
 
