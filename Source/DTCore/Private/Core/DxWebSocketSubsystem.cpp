@@ -54,6 +54,8 @@ void UDxWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void UDxWebSocketSubsystem::Deinitialize()
 {
 	bIsShuttingDown = true;
+	ClearSubscribeTimeout();
+	ConnectionState = EDxWebSocketConnectionState::Disconnected;
 	bWantsConnection = false;
 	++ConnectionGeneration;
 	if (UGameInstance* GameInstance = GetGameInstance())
@@ -91,6 +93,7 @@ void UDxWebSocketSubsystem::ConnectWebSocket()
 void UDxWebSocketSubsystem::BeginConnectionAttempt()
 {
 	if (bIsShuttingDown || !bWantsConnection) return;
+	ClearSubscribeTimeout();
 	const uint64 Generation = ++ConnectionGeneration;
 	PendingSubscribeCount = 0;
 	bSubscriptionBatchStarted = false;
@@ -130,7 +133,7 @@ void UDxWebSocketSubsystem::BeginConnectionAttempt()
 			? Settings->WebSocketUrl
 			: TEXT("ws://localhost:31000");
 
-	DX_LOG(GetWorld(), TEXT("[DEBUG] ConnectWebSocket URL: %s"), *WsUrl);
+	DX_LOG(GetWorld(), TEXT("ConnectWebSocket: 연결 시도"));
 
 	StompClient = StompModule->CreateClient(WsUrl);
 
@@ -174,6 +177,11 @@ void UDxWebSocketSubsystem::BeginConnectionAttempt()
 				Self->HandleOnClosed(Reason);
 		});
 	});
+	SetConnectionState(EDxWebSocketConnectionState::Connecting, TEXT("Connection attempt started"));
+	if (bIsShuttingDown || !bWantsConnection || ConnectionGeneration != Generation)
+	{
+		return;
+	}
 	StompClient->Connect(LoginInfo);
 }
 
@@ -196,6 +204,12 @@ void UDxWebSocketSubsystem::ConnectStompClient(const TMap<FName, FString>& Heade
 	}
 
 	DX_LOG(GetWorld(), TEXT("Connect STOMP WebSocket"));
+	const uint64 Generation = ConnectionGeneration;
+	SetConnectionState(EDxWebSocketConnectionState::Connecting, TEXT("Connection requested"));
+	if (bIsShuttingDown || !bWantsConnection || ConnectionGeneration != Generation)
+	{
+		return;
+	}
 	StompClient->Connect(Header);
 }
 
@@ -203,15 +217,15 @@ void UDxWebSocketSubsystem::DisconnectStompClient(const TMap<FName, FString>& He
 {
 	bWantsConnection = false;
 	++ConnectionGeneration;
+	ClearSubscribeTimeout();
 	PendingSubscribeCount = 0;
 	if (UGameInstance* GI = GetGameInstance()) GI->GetTimerManager().ClearTimer(ReconnectTimerHandle);
-	if (!StompClient.IsValid())
+	if (StompClient.IsValid())
 	{
-		return;
+		DX_LOG(GetWorld(), TEXT("DisConnect STOMP WebSocket"));
+		StompClient->Disconnect(Header);
 	}
-
-	DX_LOG(GetWorld(), TEXT("DisConnect STOMP WebSocket"));
-	StompClient->Disconnect(Header);
+	SetConnectionState(EDxWebSocketConnectionState::Disconnected, TEXT("Manual disconnect"));
 }
 
 void UDxWebSocketSubsystem::ReceivedMessage(const FWebSocketMessage& Message)
@@ -223,8 +237,7 @@ void UDxWebSocketSubsystem::ReceivedMessage(const FWebSocketMessage& Message)
 		return;
 	}
 
-	const ETopicRouteType* RouteType = TopicRouteMap.Find(Message.Destination);
-	if (!RouteType)
+	if (!TopicRouteMap.Contains(Message.Destination))
 	{
 		DX_LOG(GetWorld(), TEXT("ReceivedMessage: 등록되지 않은 토픽 [%s]"), *Message.Destination);
 		return;
@@ -235,15 +248,8 @@ void UDxWebSocketSubsystem::ReceivedMessage(const FWebSocketMessage& Message)
 	UDxDataSubsystem* DS = GI->GetSubsystem<UDxDataSubsystem>();
 	if (!DS) return;
 
-	switch (*RouteType)
-	{
-	case ETopicRouteType::WebSocket:
-		DS->EnqueueWebSocketData(BodyString);
-		break;
-	case ETopicRouteType::Api:
-		DS->EnqueueWebSocketData(BodyString);
-		break;
-	}
+	// 두 설정은 구독 대상 목록이며 실제 핸들러 라우팅은 MESSAGE_ID 기준이다.
+	DS->EnqueueWebSocketData(BodyString);
 }
 
 FString UDxWebSocketSubsystem::Subscribe(const FString& Destination, const FSTOMPSubscriptionEvent& EventCallback,
@@ -263,6 +269,10 @@ FString UDxWebSocketSubsystem::Subscribe(const FString& Destination, const FSTOM
 	TWeakObjectPtr<UDxWebSocketSubsystem> WeakThis(this);
 	const uint64 Generation = ConnectionGeneration;
 	auto Completed = MakeShared<bool>(false);
+	if (CompletionCallback.GetUObject() == this && CompletionCallback.GetFunctionName() == GET_FUNCTION_NAME_CHECKED(UDxWebSocketSubsystem, HandleSubscribeComplete))
+	{
+		BatchReceipts.Add(Completed);
+	}
 
 	return StompClient->Subscribe(Destination,
 	FStompSubscriptionEvent::CreateLambda([WeakThis, Generation, EventCallback](const IStompMessage& Message) -> void
@@ -349,6 +359,8 @@ void UDxWebSocketSubsystem::HandleOnConnected(const FString& ProtocolVersion, co
 {
 	if (bIsShuttingDown || !bWantsConnection || bSubscriptionBatchStarted) return;
 	bSubscriptionBatchStarted = true;
+	LastSubscribeFailureCount = 0;
+	const uint64 Generation = ConnectionGeneration;
 	DX_LOG(GetWorld(), TEXT("STOMP WebSocket 연결 성공 - Protocol: %s, Session: %s"), *ProtocolVersion, *SessionId);
 
 	RetryCount = 0;
@@ -363,19 +375,33 @@ void UDxWebSocketSubsystem::HandleOnConnected(const FString& ProtocolVersion, co
 		ReceivedMessageEvent.BindDynamic(this, &UDxWebSocketSubsystem::ReceivedMessage);
 	}
 
-	// 모든 토픽 구독이 완료된 후 OnConnected를 Broadcast하기 위해 카운터로 추적
-	const int32 TotalTopics = TopicRouteMap.Num();
-	if (TotalTopics == 0)
-	{
-		bConnectedBroadcast = true;
-		OnConnected.Broadcast(ProtocolVersion, SessionId, ServerString);
-		return;
-	}
-
-	PendingSubscribeCount = TotalTopics;
 	PendingProtocolVersion = ProtocolVersion;
 	PendingSessionId = SessionId;
 	PendingServerString = ServerString;
+	PendingSubscribeCount = TopicRouteMap.Num();
+	SetConnectionState(EDxWebSocketConnectionState::Subscribing, TEXT("Transport connected; subscriptions pending"));
+	if (bIsShuttingDown || !bWantsConnection || ConnectionGeneration != Generation)
+	{
+		return;
+	}
+	if (PendingSubscribeCount == 0)
+	{
+		CompleteSubscriptionBatch();
+		return;
+	}
+
+	const float Timeout = GetDefault<UDTCoreSettings>()->SubscribeReceiptTimeoutSeconds;
+	if (Timeout > 0.0f)
+	{
+		if (UGameInstance* GI = GetGameInstance())
+		{
+			GI->GetTimerManager().SetTimer(SubscribeTimeoutHandle,
+				FTimerDelegate::CreateWeakLambda(this, [this, Generation]()
+				{
+					HandleSubscribeTimeout(Generation);
+				}), Timeout, false);
+		}
+	}
 
 	// CompletedMessageEvent는 UPROPERTY이므로 BindDynamic 사용 가능
 	CompletedMessageEvent.BindDynamic(this, &UDxWebSocketSubsystem::HandleSubscribeComplete);
@@ -392,16 +418,65 @@ void UDxWebSocketSubsystem::HandleSubscribeComplete(bool bSuccess, FString Error
 	if (bIsShuttingDown || !bWantsConnection || bConnectedBroadcast || PendingSubscribeCount <= 0) return;
 	if (!bSuccess)
 	{
-		DX_LOG(GetWorld(), TEXT("Subscribe 실패: %s"), *Error);
+		++LastSubscribeFailureCount;
+		DX_LOG(GetWorld(), TEXT("Subscribe 실패"));
 	}
 
 	PendingSubscribeCount--;
 	if (PendingSubscribeCount <= 0)
 	{
-		DX_LOG(GetWorld(), TEXT("모든 토픽 구독 완료 - OnConnected Broadcast"));
-		bConnectedBroadcast = true;
-		OnConnected.Broadcast(PendingProtocolVersion, PendingSessionId, PendingServerString);
+		CompleteSubscriptionBatch();
 	}
+}
+
+void UDxWebSocketSubsystem::SetConnectionState(EDxWebSocketConnectionState NewState, const FString& Reason)
+{
+	if (bIsShuttingDown || ConnectionState == NewState)
+	{
+		return;
+	}
+	ConnectionState = NewState;
+	OnConnectionStateChanged.Broadcast(NewState, Reason);
+}
+
+void UDxWebSocketSubsystem::ClearSubscribeTimeout()
+{
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		GI->GetTimerManager().ClearTimer(SubscribeTimeoutHandle);
+	}
+	for (const auto& Receipt : BatchReceipts)
+	{
+		*Receipt = true;
+	}
+	BatchReceipts.Reset();
+}
+
+void UDxWebSocketSubsystem::CompleteSubscriptionBatch()
+{
+	if (bIsShuttingDown || !bWantsConnection || bConnectedBroadcast)
+	{
+		return;
+	}
+	ClearSubscribeTimeout();
+	PendingSubscribeCount = 0;
+	bConnectedBroadcast = true;
+	// 상태 이벤트에서 재진입하더라도 완료된 batch의 기존 알림은 정확히 한 번 전달한다.
+	const FString Protocol = PendingProtocolVersion;
+	const FString Session = PendingSessionId;
+	const FString Server = PendingServerString;
+	SetConnectionState(EDxWebSocketConnectionState::Ready, TEXT("Subscription batch completed"));
+	OnConnected.Broadcast(Protocol, Session, Server);
+}
+
+void UDxWebSocketSubsystem::HandleSubscribeTimeout(uint64 Generation)
+{
+	if (bIsShuttingDown || !bWantsConnection || ConnectionGeneration != Generation || bConnectedBroadcast || PendingSubscribeCount <= 0)
+	{
+		return;
+	}
+	LastSubscribeFailureCount += PendingSubscribeCount;
+	CompleteSubscriptionBatch();
 }
 
 void UDxWebSocketSubsystem::HandleOnConnectionError(const FString& Error)
@@ -409,6 +484,7 @@ void UDxWebSocketSubsystem::HandleOnConnectionError(const FString& Error)
 	DX_LOG(GetWorld(), TEXT("ConnectionError STOMP WebSocket: %s"), *Error);
 
 	++ConnectionGeneration;
+	ClearSubscribeTimeout();
 	TryReconnect();
 }
 
@@ -427,6 +503,7 @@ void UDxWebSocketSubsystem::HandleOnClosed(const FString& Reason)
 	}
 
 	++ConnectionGeneration;
+	ClearSubscribeTimeout();
 	TryReconnect();
 }
 
@@ -450,6 +527,7 @@ void UDxWebSocketSubsystem::TryReconnect()
 	const int32 MaxAttempts = Settings ? Settings->MaxReconnectAttempts : 10;
 	if (MaxAttempts > 0 && RetryCount >= MaxAttempts)
 	{
+		SetConnectionState(EDxWebSocketConnectionState::GaveUp, TEXT("Maximum reconnect attempts reached"));
 		DX_LOG(GetWorld(), TEXT("TryReconnect: 최대 재시도 횟수(%d) 초과 - 재연결 중단. ConnectWebSocket() 호출로 수동 재시도 가능"), MaxAttempts);
 		return;
 	}
@@ -469,4 +547,5 @@ void UDxWebSocketSubsystem::TryReconnect()
 		CurrentDelay,
 		false
 	);
+	SetConnectionState(EDxWebSocketConnectionState::Reconnecting, TEXT("Reconnect scheduled"));
 }

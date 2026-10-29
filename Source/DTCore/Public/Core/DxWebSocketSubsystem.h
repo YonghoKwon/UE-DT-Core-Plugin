@@ -6,13 +6,26 @@
 
 class IStompClient;
 
-/** 토픽 수신 데이터를 어느 큐로 라우팅할지 결정하는 타입 */
+/** 호환용 구독 대상 목록 구분이며 실제 라우팅은 모두 MESSAGE_ID 기준이다. */
 UENUM()
 enum class ETopicRouteType : uint8
 {
-	WebSocket,  // → DxDataSubsystem::EnqueueWebSocketData (TC 전문)
-	Api,        // → DxDataSubsystem::EnqueueApiData (API 응답)
+	WebSocket,  // 구독 대상 목록이며 라우팅은 MESSAGE_ID 기준
+	Api,        // 구독 대상 목록이며 라우팅은 MESSAGE_ID 기준
 };
+
+UENUM(BlueprintType)
+enum class EDxWebSocketConnectionState : uint8
+{
+	Disconnected,
+	Connecting,
+	Subscribing,
+	Ready,
+	Reconnecting,
+	GaveUp
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FDxWebSocketStateChanged, EDxWebSocketConnectionState, State, FString, Reason);
 
 USTRUCT(BlueprintType)
 struct FWebSocketMessage
@@ -67,12 +80,33 @@ public:
 	FString Subscribe(const FString& Destination, const FSTOMPSubscriptionEvent& EventCallback, const FSTOMPRequestCompleted& CompletionCallback);
 	UFUNCTION(Category = "DxWebSocket")
 	void Unsubscribe(const FString& Subscription, const FSTOMPRequestCompleted& CompletionCallback);
+	// Ready는 성공 여부와 무관하게 모든 구독 완료 callback을 회수한 상태이다.
+	UFUNCTION(BlueprintPure, Category = "DxWebSocket")
+	EDxWebSocketConnectionState GetConnectionState() const { return ConnectionState; }
+	UFUNCTION(BlueprintPure, Category = "DxWebSocket")
+	int32 GetReconnectAttemptCount() const { return RetryCount; }
+	UFUNCTION(BlueprintPure, Category = "DxWebSocket")
+	int32 GetLastSubscribeFailureCount() const { return LastSubscribeFailureCount; }
+
+	UPROPERTY(BlueprintAssignable, Category = "DxWebSocket")
+	FDxWebSocketStateChanged OnConnectionStateChanged;
+
 private:
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FDTCoreSubscriptionLifecycleTest;
-	friend class FDTCoreSlabBrokerCheck;
+	friend class FDTCoreConnectionStateTest;
+	friend class FDTCoreReceiptTimeoutTest;
 #endif
 	void BeginConnectionAttempt();
+	void SetConnectionState(EDxWebSocketConnectionState NewState, const FString& Reason);
+	void CompleteSubscriptionBatch();
+	void HandleSubscribeTimeout(uint64 Generation);
+	void ClearSubscribeTimeout();
+	EDxWebSocketConnectionState ConnectionState = EDxWebSocketConnectionState::Disconnected;
+	int32 LastSubscribeFailureCount = 0;
+	FTimerHandle SubscribeTimeoutHandle;
+	// 각 receipt의 완료 여부는 GameThread에서만 읽고 쓴다.
+	TArray<TSharedPtr<bool>> BatchReceipts;
 	bool bWantsConnection = false;
 	bool bIsShuttingDown = false;
 	uint64 ConnectionGeneration = 0;
