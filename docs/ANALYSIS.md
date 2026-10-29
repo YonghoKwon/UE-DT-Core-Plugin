@@ -42,7 +42,7 @@ Unreal Engine 기반 **디지털 트윈 프로젝트용 공통 런타임 플러�
 | 모듈 구성 | `DTCore` Runtime 모듈 1개 (LoadingPhase: Default) |
 | 자체 C++ 코드 | 약 3,600줄 |
 | 서드파티 | yyjson (약 11,000줄, `Source/DTCore/Private/Lib/yyjson.c`) |
-| 테스트 / CI | 없음 |
+| 테스트 / CI | 최초 분석 당시 없음. 현재 자체 Automation Test 추가, CI 없음 (`QUALITY_90.md`) |
 
 ### 의존성 구조 (`DTCore.Build.cs`)
 
@@ -109,28 +109,13 @@ GameThread AsyncTask에서 Handler->ProcessStructData (최종 반영)
 
 ## 4. 발견 사항
 
-### 4.1 [High] 최신 커밋으로 인한 Topic 라우팅 분기 무의미화 + README 불일치
+### 4.1 [해결] Topic 구독 목록과 MESSAGE_ID 라우팅 확정
 
-- 위치: `Source/DTCore/Private/Core/DxWebSocketSubsystem.cpp:184`
-- 내용: 커밋 `2eec1fe`가 `ReceivedMessage()`의 `ETopicRouteType::Api` 분기를 `EnqueueApiData` → `EnqueueWebSocketData`로 변경했습니다.
-
-```cpp
-switch (*RouteType)
-{
-case ETopicRouteType::WebSocket:
-    DS->EnqueueWebSocketData(BodyString);
-    break;
-case ETopicRouteType::Api:
-    DS->EnqueueWebSocketData(BodyString);   // ← 2eec1fe에서 EnqueueApiData로부터 변경됨
-    break;
-}
-```
-
-- 영향:
-  - `WebSocketTopics` / `ApiTopics` 설정 구분과 `ETopicRouteType` enum 분기가 사실상 무의미해짐 (두 분기 모두 같은 큐로 적재)
-  - `ApiTopics`로 수신된 메시지는 이제 `MESSAGE_ID` 키 기반 TransactionCode 핸들러로 디스패치됨. API 형식(`meta.resource`/`meta.action`) 메시지라면 `MESSAGE_ID`가 없어 "'MESSAGE_ID' 노드 없음" 경고와 함께 버려질 수 있음
-  - 커밋 메시지("동기화")로 보아 의도적 변경으로 추정되나, 의도라면 라우팅 구조와 문서 정리가 필요함
-- 참고: README 4.2절의 라우팅 표는 본 분석과 함께 현재 코드 기준으로 갱신되었습니다. 변경의 의도(임시 조치인지, 확정 구조인지)는 저장소 소유자 확인이 필요합니다.
+- 2026-10-29 소유자 결정: `WebSocketTopics`와 `ApiTopics`는 모두 구독 대상 목록이며 라우팅은 `MESSAGE_ID` 기준이다.
+- `ReceivedMessage()`의 중복 enum 분기를 제거하고 등록 Topic을 모두 `EnqueueWebSocketData`에 전달한다. 기존 동작은 유지한다.
+- `ETopicRouteType` enum과 `ApiTopics` Config 키는 호환을 위해 유지하고 주석을 바로잡았다.
+- `meta.resource`/`meta.action` API 응답은 HTTP 경로의 API Queue를 사용한다. STOMP에서 그 형식만 보내면 `MESSAGE_ID` 누락으로 버려지는 기존 동작은 바꾸지 않았다.
+- README 4.2절과 설정 표를 확정한 계약에 맞게 갱신했다. 추가 검증 결과는 `QUALITY_90.md`에 기록한다.
 
 ### 4.2 [Medium] ApiDataTable 이중 로드
 
@@ -160,9 +145,9 @@ FString Key = FPaths::Combine(PascalResource, PascalAction);
 - 위치: `Source/DTCore/Public/Core/DTCoreSettings.h:34-37` (`WebSocketLogin/Passcode = "artemis"`)
 - 개발 편의용 기본값이지만, README 12절의 "운영 서버 정보를 cpp에 직접 입력하지 않기" 원칙과 결이 다릅니다. 운영 배포 시 `Game.ini` 오버라이드로 반드시 교체되는지 확인이 필요합니다.
 
-### 4.6 [Medium] 테스트 / CI 부재
+### 4.6 [부분 해결] 자체 테스트 도입, CI 미구성
 
-- 자동화 테스트(Unreal Automation Test)와 CI 파이프라인이 없습니다. 파싱/디스패치 로직(키 생성, 큐 배치, Game.ini 오버라이드 우선순위)은 순수 로직이라 테스트 작성 난이도가 낮은 편입니다.
+- `Source/DTCore/Private/Tests`에 DTCore 계약·품질 자동화 테스트를 추가했습니다. 일반 시험은 fake STOMP/HTTP RequestProbe를 사용하며 실제 Broker 장기 시험은 별도 opt-in입니다. CI 파이프라인은 아직 없습니다.
 
 ### 4.7 [정보] README 미기재 항목
 
@@ -185,10 +170,10 @@ FString Key = FPaths::Combine(PascalResource, PascalAction);
 
 | 우선순위 | 항목 | 관련 절 |
 |---|---|---|
-| High | Api 토픽 라우팅 변경(2eec1fe)의 의도 확인 및 구조/문서 정리 | 4.1 |
+| 해결 | 두 구독 목록 모두 MESSAGE_ID 라우팅 유지, 중복 분기와 문서 정리 | 4.1 |
 | Medium | ParseToStruct 스레드 규칙 코드 수준 가드 | 4.4 |
 | Medium | ApiDataTable 로드 책임 일원화 | 4.2 |
-| Medium | 핵심 순수 로직에 Automation Test 도입 | 4.6 |
+| 부분 해결 | 자체 Automation Test 도입, CI 미구성 | 4.6 |
 | Low | PascalCase 죽은 코드 정리 | 4.3 |
 | Low | 인증 기본값 정책 확인 | 4.5 |
 
