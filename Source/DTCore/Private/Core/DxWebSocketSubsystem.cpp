@@ -251,8 +251,13 @@ void UDxWebSocketSubsystem::ReceivedMessage(const FWebSocketMessage& Message)
 
 	// 두 RouteType 모두 WebSocket 큐(MESSAGE_ID 핸들러)로 보낸다.
 	// Api는 WebSocket으로 받는 Api 방식 데이터를 구분하기 위한 값이며, 어느 경로로 들어왔는지 로그로 남긴다.
-	const TCHAR* RouteName = *RouteType == ETopicRouteType::Api ? TEXT("Api") : TEXT("WebSocket");
-	DX_LOG(GetWorld(), TEXT("ReceivedMessage: RouteType=%s, Topic=%s, Bytes=%d"), RouteName, *Message.Destination, BodyString.Len());
+	// 수신량이 많은 토픽에서 로그가 커지지 않도록 토픽별 첫 수신만 기록한다.
+	if (!RouteLoggedTopics.Contains(Message.Destination))
+	{
+		RouteLoggedTopics.Add(Message.Destination);
+		const TCHAR* RouteName = *RouteType == ETopicRouteType::Api ? TEXT("Api") : TEXT("WebSocket");
+		DX_LOG(GetWorld(), TEXT("ReceivedMessage: RouteType=%s, Topic=%s, Bytes=%d (토픽별 첫 수신만 기록)"), RouteName, *Message.Destination, BodyString.Len());
+	}
 	DS->EnqueueWebSocketData(BodyString);
 }
 

@@ -6,7 +6,7 @@
 
 | 영역 | 변경 | 유지한 계약 |
 |---|---|---|
-| STOMP Topic | 같은 동작 두 분기를 하나로 합치고, 수신마다 `RouteType`·Topic·길이 로그 추가 | 두 Topic 목록 모두 `EnqueueWebSocketData`, `MESSAGE_ID` 핸들러 사용. enum·Config 이름 유지 |
+| STOMP Topic | 같은 동작 두 분기를 하나로 합치고, 토픽별 첫 수신 때 `RouteType`·Topic·길이 로그 1회 | 두 Topic 목록 모두 `EnqueueWebSocketData`, `MESSAGE_ID` 핸들러 사용. enum·Config 이름 유지 |
 | 연결 상태 | `EDxWebSocketConnectionState`, 3개 조회 함수, `OnConnectionStateChanged` | 기존 `OnConnected` 시그니처와 batch 완료 의미 유지. 성공·실패 혼합 및 Topic 0개도 완료 |
 | receipt timeout | 선택적으로 미회수 receipt를 실패로 집계하여 batch 완료 | 기본 0에서는 무기한 대기. 늦은 callback·중복·이전 generation은 집계/통지하지 않음 |
 | 위젯 | 중복 검사·BringToFront·hover 및 Main 교체 시 죽은 항목 정리 | 화면에 붙은 정적 등록 항목 보존. `CloseWidgetAddLogic`을 추가 호출하지 않음 |

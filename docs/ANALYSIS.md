@@ -112,7 +112,7 @@ GameThread AsyncTask에서 Handler->ProcessStructData (최종 반영)
 ### 4.1 [해결] Topic 구독 목록과 MESSAGE_ID 라우팅 확정
 
 - 2026-10-29 소유자 결정: `WebSocketTopics`와 `ApiTopics`는 모두 구독 대상 목록이며 라우팅은 `MESSAGE_ID` 기준이다.
-- `ReceivedMessage()`의 같은 동작 두 분기를 하나로 합치고 등록 Topic을 모두 `EnqueueWebSocketData`에 전달한다. 기존 동작은 유지하며, 수신마다 `RouteType`(WebSocket/Api)·Topic·길이를 로그로 남긴다.
+- `ReceivedMessage()`의 같은 동작 두 분기를 하나로 합치고 등록 Topic을 모두 `EnqueueWebSocketData`에 전달한다. 기존 동작은 유지하며, 토픽별 첫 수신 때 `RouteType`(WebSocket/Api)·Topic·길이를 한 번 로그로 남긴다.
 - `ETopicRouteType` enum과 `ApiTopics` Config 키는 호환을 위해 유지하고 주석을 바로잡았다.
 - `meta.resource`/`meta.action` API 응답은 HTTP 경로의 API Queue를 사용한다. STOMP에서 그 형식만 보내면 `MESSAGE_ID` 누락으로 버려지는 기존 동작은 바꾸지 않았다.
 - README 4.2절과 설정 표를 확정한 계약에 맞게 갱신했다. 추가 검증 결과는 `QUALITY_90.md`에 기록한다.

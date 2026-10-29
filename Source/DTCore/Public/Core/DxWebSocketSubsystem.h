@@ -151,6 +151,9 @@ private:
 	// 토픽 → 라우팅 타입 매핑 (DTCoreSettings에서 읽어 Initialize()에서 구성)
 	TMap<FString, ETopicRouteType> TopicRouteMap;
 
+	// RouteType 수신 로그를 이미 남긴 토픽 (토픽별 첫 수신만 기록, GameThread 전용)
+	TSet<FString> RouteLoggedTopics;
+
 	// 구독 완료 카운팅 (모든 구독 완료 후 OnConnected Broadcast)
 	int32 PendingSubscribeCount = 0;
 	FString PendingProtocolVersion;
