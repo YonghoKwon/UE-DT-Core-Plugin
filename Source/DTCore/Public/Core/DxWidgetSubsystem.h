@@ -66,6 +66,10 @@ public:
 	class UPanelWidget* GetAddWidgetPanel() const;
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FDTCoreWidgetPruningTest;
+#endif
+	void PruneDetachedWidgets();
 	TArray<TWeakObjectPtr<UWidget>> ExternalInputBlockers;
 	// 위젯 생성, 위치 설정, 리스트 추가 등 공통 로직을 처리
 	UDxWidget* CreateWidgetInternal(TSubclassOf<UDxWidget> WidgetClass, const FVector2D& Position, AInteractableActor* OwnerActor, UDxWidget* ParentWidget, uint8 Flag);

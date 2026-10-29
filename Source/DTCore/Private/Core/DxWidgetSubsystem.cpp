@@ -51,19 +51,27 @@ void UDxWidgetSubsystem::SwitchUIMode(EDxViewMode NewMode)
 		MainWidgetInstance = nullptr;
 	}
 
-	// 2. 데이터 테이블에서 모드에 맞는 위젯 클래스 찾기 (중복 제거)
+	PruneDetachedWidgets();
+
+	// 2. 모드에 맞는 마지막 일치 행을 적용한다.
 	MainWidgetClass = nullptr;
+	int32 MatchingRows = 0;
 	if (LevelDataTable)
 	{
 		LevelDataTable->ForeachRow<FDxLevelStruct>(TEXT("UDxWidgetSubsystem::SwitchUIMode"),
-			[this, NewMode](const FName& RowName, const FDxLevelStruct& Row)
+			[this, NewMode, &MatchingRows](const FName& RowName, const FDxLevelStruct& Row)
 			{
 				if (NewMode == Row.DxViewMode)
 				{
 					MainWidgetClass = Row.UseMainWidget;
-					// return false; // 일치하는 첫 행을 찾으면 반복 중단
+					++MatchingRows;
 				}
 			});
+	}
+
+	if (MatchingRows > 1)
+	{
+		UE_LOG(LogBase, Warning, TEXT("SwitchUIMode: 일치 행 %d개, 마지막 행 적용"), MatchingRows);
 	}
 
 	// 3. 새 메인 위젯 띄우기
@@ -193,8 +201,43 @@ TArray<TObjectPtr<UDxWidget>> UDxWidgetSubsystem::GetOpenWidgets()
 	return this->OpenWidgets;
 }
 
+void UDxWidgetSubsystem::PruneDetachedWidgets()
+{
+	OpenWidgets.RemoveAll([](const TObjectPtr<UDxWidget>& Widget)
+	{
+		if (!IsValid(Widget))
+		{
+			return true;
+		}
+		// 패널 및 WidgetTree 소유자를 따라가므로 제거된 Main의 자식도 정리된다.
+		const UWidget* Current = Widget;
+		TSet<const UWidget*> Visited;
+		while (IsValid(Current) && !Visited.Contains(Current))
+		{
+			Visited.Add(Current);
+			if (const UUserWidget* UserWidget = Cast<UUserWidget>(Current); UserWidget && UserWidget->IsInViewport())
+			{
+				return false;
+			}
+			if (const UPanelWidget* Parent = Current->GetParent())
+			{
+				Current = Parent;
+			}
+			else
+			{
+				const UWidgetTree* Tree = Current->GetTypedOuter<UWidgetTree>();
+				// Outer만으로는 연결을 보장하지 않는다. 패널에서 제거된 정적 자식도 같은 Outer를 유지한다.
+				Current = Tree && Tree->RootWidget == Current ? Cast<UUserWidget>(Tree->GetOuter()) : nullptr;
+			}
+		}
+		return true;
+	});
+}
+
 bool UDxWidgetSubsystem::IsMouseOverAnyWidget() const
 {
+	// 공개 const 시그니처를 보존하면서 내부 관리 목록만 정리한다.
+	const_cast<UDxWidgetSubsystem*>(this)->PruneDetachedWidgets();
 	for (const auto& Weak:ExternalInputBlockers)
 		if (const auto* Widget=Weak.Get(); Widget && Widget->IsVisible() && Widget->IsHovered()) return true;
 	// 1. OpenWidgets 배열 체크 (동적으로 생성된 위젯들)
@@ -207,7 +250,7 @@ bool UDxWidgetSubsystem::IsMouseOverAnyWidget() const
 	}
 
 	// 2. MainWidget 체크 (Blueprint에 직접 배치된 위젯들 포함)
-	// DxM7atNotify, DxM7atPimsFv, DxM7atCctvListFv 등이 여기 해당
+	// MainWidget 트리에 정적으로 배치된 알림 및 목록 위젯도 포함한다.
 	if (IsValid(MainWidgetInstance) && MainWidgetInstance->IsHovered())
 	{
 		return true;
@@ -227,6 +270,7 @@ void UDxWidgetSubsystem::UnregisterExternalInputBlocker(UWidget* Widget)
 UDxWidget* UDxWidgetSubsystem::CreateWidgetInternal(TSubclassOf<UDxWidget> WidgetClass, const FVector2D& Position,
 	AInteractableActor* OwnerActor, UDxWidget* ParentWidget, uint8 Flag)
 {
+	PruneDetachedWidgets();
 	// 1. 중복 체크 (NoDuplicateCheckFlags에 등록된 플래그는 중복 허용)
 	if (!NoDuplicateCheckFlags.Contains(Flag))
 	{
@@ -320,6 +364,7 @@ void UDxWidgetSubsystem::UnregisterWidget(UDxWidget* Widget)
 
 void UDxWidgetSubsystem::BringToFront(UDxWidget* Widget)
 {
+	PruneDetachedWidgets();
 	if (!Widget || !Widget->Slot) return;
 
 	// OpenWidgets에 포함된 위젯만 처리 (Top/Bottom 등 정적 위젯에 잘못된 패널에서 ZOrder를 변경하는 것을 방지)
