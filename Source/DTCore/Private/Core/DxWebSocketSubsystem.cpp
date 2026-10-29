@@ -133,7 +133,7 @@ void UDxWebSocketSubsystem::BeginConnectionAttempt()
 			? Settings->WebSocketUrl
 			: TEXT("ws://localhost:31000");
 
-	DX_LOG(GetWorld(), TEXT("ConnectWebSocket: 연결 시도"));
+	DX_LOG(GetWorld(), TEXT("[DEBUG] ConnectWebSocket URL: %s"), *WsUrl);
 
 	StompClient = StompModule->CreateClient(WsUrl);
 
@@ -419,7 +419,7 @@ void UDxWebSocketSubsystem::HandleSubscribeComplete(bool bSuccess, FString Error
 	if (!bSuccess)
 	{
 		++LastSubscribeFailureCount;
-		DX_LOG(GetWorld(), TEXT("Subscribe 실패"));
+		DX_LOG(GetWorld(), TEXT("Subscribe 실패: %s"), *Error);
 	}
 
 	PendingSubscribeCount--;

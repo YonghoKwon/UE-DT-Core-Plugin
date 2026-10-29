@@ -282,7 +282,7 @@ Runtime 로그를 파일로 저장하는 Subsystem입니다.
 <LaunchDir>/Logs/CustomLogs
 ```
 
-`LogDirectory`가 비어 있으면 위 기본 경로를 유지합니다. 절대 경로는 그대로, 상대 경로는 `FPaths::LaunchDir()` 기준으로 해석하며 Initialize 때 고정합니다. `LogRetentionDays` 기본값은 7이며 0은 보관 해제가 아니라 기존 날짜 비교의 **0일 보관**입니다. 날짜별 `DxLog_YYYY-MM-DD.log`, 50MB 및 suffix 1~20 rotation 규칙을 유지합니다. JSON payload·HTTP 오류 본문·요청 URL은 인증값 노출을 피하도록 진단 로그에 포함하지 않습니다.
+`LogDirectory`가 비어 있으면 위 기본 경로를 유지합니다. 절대 경로는 그대로, 상대 경로는 `FPaths::LaunchDir()` 기준으로 해석하며 Initialize 때 고정합니다. `LogRetentionDays` 기본값은 7이며 최소 1일입니다(0 이하를 넣으면 1일로 제한해 당일 로그를 지우지 않습니다). 날짜별 `DxLog_YYYY-MM-DD.log`, 50MB 및 suffix 1~20 rotation 규칙을 유지합니다. 진단 로그 내용(HTTP 오류 본문·요청 URL·파싱 실패 payload 앞 256자·구독 실패 사유)은 기존과 같습니다.
 
 ---
 

@@ -301,12 +301,12 @@ void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMod
 		}
 		else
 		{
-			DX_LOG(GetWorld(), TEXT("Response Error [%d]"), ResponseCode);
+			DX_LOG(GetWorld(), TEXT("Response Error [%d]: %s"), ResponseCode, *Content);
 		}
 	}
 	else
 	{
-		DX_LOG(GetWorld(), TEXT("Connection Failed or No Response"));
+		DX_LOG(GetWorld(), TEXT("Connection Failed or No Response: %s"), *Context.FullUrl);
 	}
 
 	// 일시적 오류(연결 실패/5xx)는 지수 백오프로 재시도. 4xx는 재시도하지 않음
@@ -321,7 +321,7 @@ void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMod
 			const float RetryDelay = InitialHttpRetryDelay * FMath::Pow(2.0f, static_cast<float>(Context.AttemptIndex));
 			Context.AttemptIndex++;
 
-			DX_LOG(GetWorld(), TEXT("HTTP retry in %.1fs (Attempt %d/%d)"), RetryDelay, Context.AttemptIndex + 1, MaxHttpAttempts);
+			DX_LOG(GetWorld(), TEXT("HTTP retry in %.1fs (Attempt %d/%d): %s"), RetryDelay, Context.AttemptIndex + 1, MaxHttpAttempts, *Context.FullUrl);
 
 			// 이미 만료된 타이머 핸들은 정리해 누적 방지
 			FTimerManager& TimerManager = GameInstance->GetTimerManager();

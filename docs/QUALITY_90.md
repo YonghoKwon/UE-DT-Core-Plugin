@@ -33,7 +33,7 @@
 | `HttpMaxAttempts` | `3` | 최초 요청 포함. 코드에서 최소 1로 제한 |
 | `HttpInitialRetryDelaySeconds` | `1.0` | 기존 지수 2.0 유지. 코드에서 최소 0.001초로 제한 |
 | `LogDirectory` | 빈 문자열 | `LaunchDir/Logs/CustomLogs`. 상대 경로는 `FPaths::LaunchDir()` 기준. Initialize 때 고정 |
-| `LogRetentionDays` | `7` | 음수는 0으로 제한. 0은 날짜 비교상 0일 보관이며 무기한 보관 옵션이 아님 |
+| `LogRetentionDays` | `7` | 최소 1일(ClampMin 및 코드에서 1로 제한). 0일 보관으로 당일 로그가 지워지는 것을 막는다. 무기한 보관 옵션은 없음 |
 | `AInteractableActor.HighlightStencilValue` | `100` | 인스턴스 편집 가능. 정적 `HighlightActor`는 메시의 InteractableActor 소유자 설정 사용 |
 | `AInteractableActor.ErrorStencilValue` | `254` | 일반 Actor 소유 메시에는 InteractableActor CDO 기본값 사용 |
 | `ADxPlayerControllerBase.PriorityTraceChannel` | `ECC_GameTraceChannel1` | 여러 충돌 결과 중 우선 선택할 object channel |
@@ -45,7 +45,7 @@
 
 기본 설정에서 HTTP 재시도·timeout, receipt 대기, Topic 라우팅, 로그 위치/보관, 입력 채널과 stencil 값은 기존과 같다. 예외는 요청된 죽은 위젯 항목 제거로 다시 열기가 정상화되는 수정, 새 상태/통계 API·진단 경고이다. Main 교체 시 기존 위젯에 새 닫기 hook을 보내지 않는다.
 
-timeout을 양수로 설정하면 미회수 receipt가 있더라도 실패로 집계한 뒤 기존 `OnConnected`를 한 번 발생시키는 새 opt-in 동작이다. HTTP·로그·입력 속성을 명시적으로 바꾸면 해당 설정에 따른 동작을 사용한다. URL/HTTP 오류 본문/JSON 원문을 진단 로그에서 제거하여 payload 또는 URL에 포함될 수 있는 인증값을 남기지 않는다. 구독 실패 원문 대신 실패 수를 공개한다. 업무 콜백의 Content/Error 시그니처는 바꾸지 않는다.
+timeout을 양수로 설정하면 미회수 receipt가 있더라도 실패로 집계한 뒤 기존 `OnConnected`를 한 번 발생시키는 새 opt-in 동작이다. HTTP·로그·입력 속성을 명시적으로 바꾸면 해당 설정에 따른 동작을 사용한다. 진단 로그 내용(HTTP 오류 본문, 요청 URL, 파싱 실패 payload 앞 256자, WebSocket URL, 구독 실패 사유)은 기존과 같다. 검토 단계에서 Codex 초안의 로그 제거를 원복했다. 운영 진단에 쓰이는 정보이며 요청 범위 밖의 동작 변경이기 때문이다. 구독 실패 수는 별도 조회로 추가 제공한다. 업무 콜백의 Content/Error 시그니처는 바꾸지 않는다.
 
 Public 의존 모듈은 Core/CoreUObject/Engine/UMG를 유지한다. yyjson 두 파일과 Base Tick 기본값은 수정하지 않았다. 기존 공개 함수·UPROPERTY·Blueprint 노드를 삭제하거나 바꾸지 않았다. 소비 프로젝트 전용 `FDTCoreSlabBrokerCheck` friend만 요청대로 제거했다. 내부 테스트의 friend는 유지/추가했다. fixture UObject 타입은 UHT용 Private 헤더에 선언하고 실제 시험 코드는 `WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR`로 제한한다. fixture 이름은 소비 프로젝트의 기존 Listener와 충돌하지 않도록 `UDxCoreTest*`를 사용한다.
 

@@ -216,7 +216,7 @@ void UDxDataSubsystem::ProcessApiQueue()
 	            {
 		            // 백그라운드 스레드이므로 DX_LOG(GetWorld(), ...) 대신 UE_LOG 사용
 		            StrongThis->JsonParseFailuresCount.Increment();
-					UE_LOG(LogBase, Warning, TEXT("ProcessApiQueue: JSON 파싱 실패"));
+					UE_LOG(LogBase, Warning, TEXT("ProcessApiQueue: JSON 파싱 실패 - Payload(256자): %s"), *SingleData.Left(256));
 		            continue;
 	            }
 
@@ -226,7 +226,7 @@ void UDxDataSubsystem::ProcessApiQueue()
 	            if (!JsonParser.IsValid(MetaNode))
 	            {
 		            StrongThis->MissingDispatchKeysCount.Increment();
-					UE_LOG(LogBase, Warning, TEXT("ProcessApiQueue: 'meta' 노드 없음"));
+					UE_LOG(LogBase, Warning, TEXT("ProcessApiQueue: 'meta' 노드 없음 - Payload(256자): %s"), *SingleData.Left(256));
 		            continue;
 	            }
 
@@ -359,7 +359,7 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 				{
 					// 백그라운드 스레드이므로 DX_LOG(GetWorld(), ...) 대신 UE_LOG 사용
 					StrongThis->JsonParseFailuresCount.Increment();
-					UE_LOG(LogBase, Warning, TEXT("ProcessWebSocketQueue: JSON 파싱 실패"));
+					UE_LOG(LogBase, Warning, TEXT("ProcessWebSocketQueue: JSON 파싱 실패 - Payload(256자): %s"), *SingleData.Left(256));
 					continue;
 				}
 
@@ -369,7 +369,7 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 				if (!JsonParser.IsValid(MsgIdVal))
 				{
 					StrongThis->MissingDispatchKeysCount.Increment();
-					UE_LOG(LogBase, Warning, TEXT("ProcessWebSocketQueue: 'MESSAGE_ID' 노드 없음"));
+					UE_LOG(LogBase, Warning, TEXT("ProcessWebSocketQueue: 'MESSAGE_ID' 노드 없음 - Payload(256자): %s"), *SingleData.Left(256));
 					continue;
 				}
 

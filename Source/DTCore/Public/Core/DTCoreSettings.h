@@ -62,7 +62,7 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Log")
 	FString LogDirectory;
 
-	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Log", meta = (ClampMin = "0"))
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Log", meta = (ClampMin = "1"))
 	int32 LogRetentionDays = 7;
 
 	// API 기본 URL

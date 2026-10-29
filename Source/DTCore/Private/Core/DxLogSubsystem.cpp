@@ -24,7 +24,7 @@ void UDxLogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	FCoreDelegates::OnExit.AddUObject(this, &UDxLogSubsystem::OnGameExit);
 
-	const int32 RetentionDays = FMath::Max(0, GetDefault<UDTCoreSettings>()->LogRetentionDays);
+	const int32 RetentionDays = FMath::Max(1, GetDefault<UDTCoreSettings>()->LogRetentionDays);
 	CleanupTask = Async(EAsyncExecution::ThreadPool, [this, RetentionDays]()
 	{
 		DeleteOldLogs(RetentionDays);

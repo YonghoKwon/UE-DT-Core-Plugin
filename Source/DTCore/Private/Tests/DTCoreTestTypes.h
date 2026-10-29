@@ -16,7 +16,7 @@ struct FDxCoreTestParseProbe
 	TAtomic<int32> Applied{0};
 };
 
-UCLASS(Transient, NotBlueprintable)
+UCLASS(Transient, NotBlueprintable, HideDropdown)
 class UDxCoreTestGameInstance : public UGameInstance
 {
 	GENERATED_BODY()
@@ -27,7 +27,7 @@ public:
 	}
 };
 
-UCLASS(Transient, NotBlueprintable)
+UCLASS(Transient, NotBlueprintable, HideDropdown)
 class UDxCoreTestSlowTransaction : public UTransactionCodeMessage
 {
 	GENERATED_BODY()
@@ -37,7 +37,7 @@ public:
 	virtual void ProcessStructData(const TSharedPtr<FTransactionCodeDataBase>&) override;
 };
 
-UCLASS(Transient, NotBlueprintable)
+UCLASS(Transient, NotBlueprintable, HideDropdown)
 class UDxCoreTestApiMessage : public UApiMessage
 {
 	GENERATED_BODY()
@@ -45,7 +45,7 @@ public:
 	virtual TSharedPtr<FApiDataBase> ParseToStruct(const FString&) const override;
 };
 
-UCLASS(Transient, NotBlueprintable)
+UCLASS(Transient, NotBlueprintable, HideDropdown)
 class UDxCoreTestListener : public UObject
 {
 	GENERATED_BODY()
@@ -65,7 +65,7 @@ public:
 	void ReceiveState(EDxWebSocketConnectionState State, FString Reason);
 };
 
-UCLASS(Transient, NotBlueprintable)
+UCLASS(Transient, NotBlueprintable, HideDropdown)
 class UDxCoreTestCloseOrderWidget : public UDxWidget
 {
 	GENERATED_BODY()
