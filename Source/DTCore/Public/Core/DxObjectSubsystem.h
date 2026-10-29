@@ -12,6 +12,7 @@ class DTCORE_API UDxObjectSubsystem : public UGameInstanceSubsystem
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
+	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
 
 	UFUNCTION(BlueprintCallable, Category = "DxObject")
 	void RegisterObject(FName Category, const FString& Id, AActor* Actor);
@@ -61,10 +62,16 @@ public:
 		return Cast<T>(FindObject(Category, Id));
 	}
 
-	// C++ 전용 스냅샷 조회가 필요할 때 사용합니다. Blueprint에서는 GetAllObjects/GetObjectIds를 우선 사용하세요.
+	// 내부 map의 임시 조회 포인터이며 복사본이 아니다. 등록/해제 후에는 다시 조회한다.
+	// Blueprint에서는 GetAllObjects/GetObjectIds를 우선 사용한다.
 	const TMap<FString, TObjectPtr<AActor>>* GetCategoryMap(FName Category) const;
 
 private:
+	UFUNCTION() void HandleRegisteredActorDestroyed(AActor* Actor);
+	UFUNCTION() void HandleRegisteredActorEndPlay(AActor* Actor, EEndPlayReason::Type Reason);
+	void HandleWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources);
+	void ReleaseActorIfUnused(AActor* Actor);
+	// 등록 기간에는 Actor를 GC 참조로 보유한다. EndPlay/명시적 해제로 해제한다.
 	// 게임 스레드 전용. 동기화 없이 접근하므로 백그라운드 스레드에서 사용 금지
 	TMap<FName, TMap<FString, TObjectPtr<AActor>>> RegisteredObjects;
 };

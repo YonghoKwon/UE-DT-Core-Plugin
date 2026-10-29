@@ -3,13 +3,14 @@
 #include "CoreMinimal.h"
 #include "HAL/ThreadSafeBool.h"
 #include "HAL/ThreadSafeCounter.h"
+#include "Async/Future.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "DxDataSubsystem.generated.h"
 
 class UTransactionCodeMessage;
 class UApiMessage;
 /**
- * 
+ *
  */
 UCLASS()
 class DTCORE_API UDxDataSubsystem : public UGameInstanceSubsystem, public FTickableGameObject
@@ -31,6 +32,13 @@ public:
 	void EnqueueWebSocketData(const FString& Data);
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FDTCoreWorkerShutdownTest;
+	friend class FDTCoreQueueWorldCleanupTest;
+#endif
+	TFuture<void> ApiWorker;
+	TFuture<void> WebSocketWorker;
+	TAtomic<uint64> ParseGeneration{0};
 	void ProcessApiQueue();
 	void ProcessWebSocketQueue();
 

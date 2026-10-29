@@ -43,7 +43,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSTOMPConnectionErrorEvent, FString,
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSTOMPErrorEvent, FString, Error);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSTOMPCloseEvent, FString, Reason);
 /**
- * 
+ *
  */
 UCLASS()
 class DTCORE_API UDxWebSocketSubsystem : public UGameInstanceSubsystem
@@ -68,6 +68,16 @@ public:
 	UFUNCTION(Category = "DxWebSocket")
 	void Unsubscribe(const FString& Subscription, const FSTOMPRequestCompleted& CompletionCallback);
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FDTCoreSubscriptionLifecycleTest;
+	friend class FDTCoreSlabBrokerCheck;
+#endif
+	void BeginConnectionAttempt();
+	bool bWantsConnection = false;
+	bool bIsShuttingDown = false;
+	uint64 ConnectionGeneration = 0;
+	bool bSubscriptionBatchStarted = false;
+	bool bConnectedBroadcast = false;
 	UFUNCTION(Category = "DxWebSocket")
 	void HandleOnConnected(const FString& ProtocolVersion, const FString& SessionId, const FString& ServerString);
 	UFUNCTION(Category = "DxWebSocket")
@@ -79,7 +89,7 @@ private:
 
 	UFUNCTION(Category = "DxWebSocket")
 	void TryReconnect();
-	
+
 	/** 개별 토픽 구독 완료 시 호출 - 모든 구독이 완료되면 OnConnected를 Broadcast */
 	UFUNCTION(Category = "DxWebSocket")
 	void HandleSubscribeComplete(bool bSuccess, FString Error);
@@ -106,7 +116,7 @@ private:
 
 	// 토픽 → 라우팅 타입 매핑 (DTCoreSettings에서 읽어 Initialize()에서 구성)
 	TMap<FString, ETopicRouteType> TopicRouteMap;
-	
+
 	// 구독 완료 카운팅 (모든 구독 완료 후 OnConnected Broadcast)
 	int32 PendingSubscribeCount = 0;
 	FString PendingProtocolVersion;

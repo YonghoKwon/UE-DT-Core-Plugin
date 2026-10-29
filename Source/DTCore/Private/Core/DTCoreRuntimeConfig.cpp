@@ -68,12 +68,12 @@ namespace DTCoreRuntimeConfig
 
 			// [5~8순위] 플랫폼별 Game.ini (Windows/WindowsGame.ini, Linux/LinuxGame.ini)
 			// Game.ini 값이 모두 비어있을 때 플랫폼별 기본값으로 폴백됨
-			if (!PathformIniRelPath.IsEmpty())
+			if (!PlatformIniRelPath.IsEmpty())
 			{
 				AddUniqueRuntimePath(Paths, FPaths::ProjectDir() / TEXT("Config") / PlatformIniRelPath);
 				AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / TEXT("Config") / PlatformIniRelPath);
 				AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / TEXT("../../Config") / PlatformIniRelPath);
-				AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / FApp::GetProjectName / TEXT("Config") / PlatformIniRelPath);
+				AddUniqueRuntimePath(Paths, FPaths::LaunchDir() / FApp::GetProjectName() / TEXT("Config") / PlatformIniRelPath);
 			}
 			
 			return Paths;

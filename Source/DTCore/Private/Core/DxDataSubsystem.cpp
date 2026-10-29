@@ -107,6 +107,10 @@ void UDxDataSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void UDxDataSubsystem::Deinitialize()
 {
 	bIsShuttingDown = true;
+	++ParseGeneration;
+	// worker는 GT 콜백을 기다리지 않고 반환하므로 여기서 파싱만 join할 수 있다.
+	if (ApiWorker.IsValid()) ApiWorker.Wait();
+	if (WebSocketWorker.IsValid()) WebSocketWorker.Wait();
 	bApiProcessing = false;
 	bWebSocketProcessing = false;
 
@@ -114,6 +118,10 @@ void UDxDataSubsystem::Deinitialize()
 	ApiHandlerInstanceCache.Empty();
 	CachedHandlerApiMessageMap.Reset();
 	CachedHandlerTransactionCodeMessageMap.Reset();
+	ApiMessageMap.Empty(); TransactionCodeMessageMap.Empty();
+	FString Discarded;
+	while (ApiDataQueue.Dequeue(Discarded)) {}
+	while (WebSocketDataQueue.Dequeue(Discarded)) {}
 
 	Super::Deinitialize();
 }
@@ -170,7 +178,8 @@ void UDxDataSubsystem::ProcessApiQueue()
     	TWeakObjectPtr<UDxDataSubsystem> WeakThis(this);
 
         // 3. 백그라운드 처리
-        AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [WeakThis, BatchDataChunk, SharedMap = CachedHandlerApiMessageMap]()
+        const uint64 Generation=ParseGeneration.Load();
+        ApiWorker=Async(EAsyncExecution::ThreadPool, [WeakThis, Generation, BatchDataChunk, SharedMap = CachedHandlerApiMessageMap]()
         {
 	        // 작업 시작 전 인스턴스 유효성 체크
 	        TObjectPtr<UDxDataSubsystem> StrongThis = WeakThis.Get();
@@ -194,6 +203,7 @@ void UDxDataSubsystem::ProcessApiQueue()
 
             for (const FString& SingleData : BatchDataChunk)
             {
+	            if (StrongThis->bIsShuttingDown || StrongThis->ParseGeneration.Load()!=Generation) break;
 	            if (!JsonParser.JsonParse(SingleData))
 	            {
 		            // 백그라운드 스레드이므로 DX_LOG(GetWorld(), ...) 대신 UE_LOG 사용
@@ -233,16 +243,17 @@ void UDxDataSubsystem::ProcessApiQueue()
 	            }
             }
 
-	        AsyncTask(ENamedThreads::GameThread, [WeakThis, BatchResults]()
+	        AsyncTask(ENamedThreads::GameThread, [WeakThis, Generation, BatchResults]()
 	        {
 		        // 다시 한 번 유효성 체크 (그 사이 소멸되었을 수 있음)
 		        TObjectPtr<UDxDataSubsystem> StrongThisGame = WeakThis.Get();
-		        if (StrongThisGame)
+		        if (StrongThisGame && StrongThisGame->ParseGeneration.Load()==Generation)
 		        {
 			        if (!StrongThisGame->bIsShuttingDown)
 			        {
 				        for (const auto& Item : BatchResults)
 				        {
+					        if (StrongThisGame->bIsShuttingDown || StrongThisGame->ParseGeneration.Load()!=Generation) break;
 					        if (IsValid(Item.Handler))
 					        {
 						        // 최종 데이터 처리 실행
@@ -295,7 +306,8 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 	{
 		TWeakObjectPtr<UDxDataSubsystem> WeakThis(this);
 
-		AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [WeakThis, BatchDataChunk, SharedMap = CachedHandlerTransactionCodeMessageMap]()
+		const uint64 Generation=ParseGeneration.Load();
+		WebSocketWorker=Async(EAsyncExecution::ThreadPool, [WeakThis, Generation, BatchDataChunk, SharedMap = CachedHandlerTransactionCodeMessageMap]()
 		{
 			// 작업 시작 전 인스턴스 유효성 체크
 			TObjectPtr<UDxDataSubsystem> StrongThis = WeakThis.Get();
@@ -320,6 +332,7 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 
 			for (const FString& SingleData : BatchDataChunk)
 			{
+				if (StrongThis->bIsShuttingDown || StrongThis->ParseGeneration.Load()!=Generation) break;
 				if (!JsonParser.JsonParse(SingleData))
 				{
 					// 백그라운드 스레드이므로 DX_LOG(GetWorld(), ...) 대신 UE_LOG 사용
@@ -354,17 +367,18 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 				}
 			}
 
-			AsyncTask(ENamedThreads::GameThread, [WeakThis, BatchResults]()
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, Generation, BatchResults]()
 			{
 				// 다시 한 번 유효성 체크 (그 사이 소멸되었을 수 있음)
 				TObjectPtr<UDxDataSubsystem> StrongThisGame = WeakThis.Get();
-				if (StrongThisGame)
+				if (StrongThisGame && StrongThisGame->ParseGeneration.Load()==Generation)
 				{
 					if (!StrongThisGame->bIsShuttingDown)
 					{
 						// 메인 스레드
 						for (const auto& Item : BatchResults)
 						{
+							if (StrongThisGame->bIsShuttingDown || StrongThisGame->ParseGeneration.Load()!=Generation) break;
 							if (IsValid(Item.Handler))
 							{
 								// 최종 데이터 처리 실행

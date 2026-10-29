@@ -39,6 +39,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "DxApi")
 	bool IsApiDataTableLoaded() const { return ApiDataTable != nullptr; }
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+	friend class FDTCoreHttpContractTest;
+	TFunction<bool(const TSharedRef<IHttpRequest, ESPMode::ThreadSafe>&)> RequestProbeForTests;
+	TFunction<bool(const TCHAR*, FString&)> RuntimeOverrideReaderForTests;
+#endif
 	// 재시도를 위해 요청 정보를 함께 들고 다니는 컨텍스트
 	struct FDxHttpRequestContext
 	{
@@ -48,6 +53,7 @@ private:
 		TMap<FString, FString> Headers;
 		FDxApiCallback Callback;
 		int32 AttemptIndex = 0;
+		uint64 Generation = 0;
 	};
 
 	void InternalHttpCall(FDxHttpRequestContext Context);
@@ -60,6 +66,8 @@ protected:
 public:
 private:
 	FHttpModule* HttpModule = nullptr;
+	bool bIsShuttingDown = false;
+	uint64 RequestGeneration = 0;
 
 	// 현재 통신 중인 HTTP 요청들을 추적하는 배열 추가
 	TArray<TSharedRef<IHttpRequest, ESPMode::ThreadSafe>> ActiveHttpRequests;

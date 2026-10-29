@@ -20,7 +20,7 @@ struct FApiServerStruct : public FTableRowBase
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ApiServer")
-	EApiServer ApiServer;
+	EApiServer ApiServer = EApiServer::Local;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ApiServer")
 	FString ApiServerUrl;
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ApiServer")

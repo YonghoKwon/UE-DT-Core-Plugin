@@ -16,8 +16,8 @@ void UDxGameInstance::Init()
 	UGameUserSettings* UserSettings = UGameUserSettings::GetGameUserSettings();
 	if (UserSettings)
 	{
-		const UDTCoreSettings* Settings = UserSettings->GetCoreSettings();
-		const float FrameLimit = Settings ? Settings->GetFrameLimit() : 60.0f;
+		const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+		const float FrameLimit = Settings ? FMath::Max(0.0f, Settings->FrameRateLimit) : 60.0f;
 		// Frame 제한 설정 (.ini의 FrameRateLimit 값 사용)		
 		UserSettings->SetFrameRateLimit(FrameLimit);
 		UserSettings->ApplySettings(false);

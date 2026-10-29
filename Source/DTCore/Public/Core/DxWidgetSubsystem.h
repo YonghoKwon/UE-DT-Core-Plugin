@@ -7,6 +7,7 @@
 
 class AInteractableActor;
 class UDxWidget;
+class UWidget;
 enum class EDxViewMode : uint8;
 
 UCLASS()
@@ -41,11 +42,11 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void BringToFront(UDxWidget* Widget);
-	
+
 	/** Blueprint에 정적으로 배치된 위젯을  OpenWidget에 수동 등록 (BringToFront 대상에 포함시키기 위함) */
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void RegisterWidget(UDxWidget* Widget);
-	
+
 	/** 수동으로 등록된 위젯을 OpenWidgets에서 제거 */
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void UnregisterWidget(UDxWidget* Widget);
@@ -57,11 +58,15 @@ public:
 	/** 현재 마우스 커서가 오픈된 DxWidget 위에 있는지 여부 */
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	bool IsMouseOverAnyWidget() const;
-	
+	// 입력 차단 등록은 창 닫기/스타일/ZOrder 소유권을 넘기지 않는다.
+	UFUNCTION(BlueprintCallable, Category="UI|Input") void RegisterExternalInputBlocker(UWidget* Widget);
+	UFUNCTION(BlueprintCallable, Category="UI|Input") void UnregisterExternalInputBlocker(UWidget* Widget);
+
 	// MainWidget에서 canvasPanel을 찾는 헬퍼 함수
 	class UPanelWidget* GetAddWidgetPanel() const;
 
 private:
+	TArray<TWeakObjectPtr<UWidget>> ExternalInputBlockers;
 	// 위젯 생성, 위치 설정, 리스트 추가 등 공통 로직을 처리
 	UDxWidget* CreateWidgetInternal(TSubclassOf<UDxWidget> WidgetClass, const FVector2D& Position, AInteractableActor* OwnerActor, UDxWidget* ParentWidget, uint8 Flag);
 
