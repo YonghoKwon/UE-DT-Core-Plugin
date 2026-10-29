@@ -31,6 +31,7 @@ private:
 	bool FlushLogs();
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FDTCoreLogFlushTest;
+	friend class FDTCoreLogSettingsTest;
 	TFunction<bool(const FString&,const FString&)> WriterSinkForTests;
 #endif
 	void DeleteOldLogs(int32 RetentionDays = 7);

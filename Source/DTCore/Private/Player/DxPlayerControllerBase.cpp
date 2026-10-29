@@ -284,17 +284,12 @@ void ADxPlayerControllerBase::CheckMouseHover()
 		return;
 	}
 
-	// 트레이스 설정 (매번 생성 비용 절약)
-	static const FCollisionObjectQueryParams ObjectQueryParams = []()
+	// 인스턴스별 설정이 런타임에 변경되어도 반영한다.
+	FCollisionObjectQueryParams ObjectQueryParams;
+	for (const auto ObjectType : TraceObjectTypes)
 	{
-		FCollisionObjectQueryParams Params;
-		Params.AddObjectTypesToQuery(ECC_WorldStatic);
-		Params.AddObjectTypesToQuery(ECC_WorldDynamic);
-		Params.AddObjectTypesToQuery(ECC_Pawn);
-		Params.AddObjectTypesToQuery(ECC_PhysicsBody);
-		Params.AddObjectTypesToQuery(ECC_GameTraceChannel1);
-		return Params;
-	}();
+		ObjectQueryParams.AddObjectTypesToQuery(ObjectType);
+	}
 
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(GetPawn());
@@ -308,13 +303,13 @@ void ADxPlayerControllerBase::CheckMouseHover()
 		HitResults, Start, End, ObjectQueryParams, QueryParams
 	);
 
-	// GameTraceChannel1(Test-> Alarm 등) 오브젝트를 최우선으로 선택
+	// 설정한 우선 채널의 오브젝트를 최우선으로 선택
 	const FHitResult* BestHit = nullptr;
 	for (const FHitResult& Hit : HitResults)
 	{
 		if (const UPrimitiveComponent* Comp = Hit.GetComponent())
 		{
-			if (Comp->GetCollisionObjectType() == ECC_GameTraceChannel1)
+			if (Comp->GetCollisionObjectType() == PriorityTraceChannel)
 			{
 				BestHit = &Hit;
 				break;

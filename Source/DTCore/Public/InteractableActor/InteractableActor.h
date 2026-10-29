@@ -61,6 +61,11 @@ public:
 	// TODO: ShortcutHighlight 변수 사용하는지 확인 필요
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "InteractableActor")
 	bool ShortcutHighlight = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "InteractableActor", meta = (ClampMin = "0", ClampMax = "255"))
+	int32 HighlightStencilValue = 100;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "InteractableActor", meta = (ClampMin = "0", ClampMax = "255"))
+	int32 ErrorStencilValue = 254;
+
 	// 하이라이트 모드 설정 (에디터에서 설정 가능)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "InteractableActor")
 	EHighlightMode HighlightMode = EHighlightMode::WholeActor;

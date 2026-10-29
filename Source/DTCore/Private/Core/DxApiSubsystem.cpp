@@ -85,6 +85,11 @@ void UDxApiSubsystem::InternalHttpCall(FDxHttpRequestContext Context)
 
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = HttpModule->CreateRequest();
 	Request->SetURL(Context.FullUrl);
+	const float Timeout = GetDefault<UDTCoreSettings>()->HttpRequestTimeoutSeconds;
+	if (Timeout > 0.0f)
+	{
+		Request->SetTimeout(Timeout);
+	}
 	// Method 설정 (GET, POST, PUT, DELETE 등)
 	Request->SetVerb(Context.Verb);
 	// 헤더 설정
@@ -296,15 +301,18 @@ void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMod
 		}
 		else
 		{
-			DX_LOG(GetWorld(), TEXT("Response Error [%d]: %s"), ResponseCode, *Content);
+			DX_LOG(GetWorld(), TEXT("Response Error [%d]"), ResponseCode);
 		}
 	}
 	else
 	{
-		DX_LOG(GetWorld(), TEXT("Connection Failed or No Response: %s"), *Context.FullUrl);
+		DX_LOG(GetWorld(), TEXT("Connection Failed or No Response"));
 	}
 
 	// 일시적 오류(연결 실패/5xx)는 지수 백오프로 재시도. 4xx는 재시도하지 않음
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+	const int32 MaxHttpAttempts = FMath::Max(1, Settings->HttpMaxAttempts);
+	const float InitialHttpRetryDelay = FMath::Max(0.001f, Settings->HttpInitialRetryDelaySeconds);
 	const bool bRetryable = bConnectionFailed || ResponseCode >= 500;
 	if (!bIsOk && bRetryable && Context.AttemptIndex + 1 < MaxHttpAttempts && HttpModule)
 	{
@@ -313,7 +321,7 @@ void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMod
 			const float RetryDelay = InitialHttpRetryDelay * FMath::Pow(2.0f, static_cast<float>(Context.AttemptIndex));
 			Context.AttemptIndex++;
 
-			DX_LOG(GetWorld(), TEXT("HTTP retry in %.1fs (Attempt %d/%d): %s"), RetryDelay, Context.AttemptIndex + 1, MaxHttpAttempts, *Context.FullUrl);
+			DX_LOG(GetWorld(), TEXT("HTTP retry in %.1fs (Attempt %d/%d)"), RetryDelay, Context.AttemptIndex + 1, MaxHttpAttempts);
 
 			// 이미 만료된 타이머 핸들은 정리해 누적 방지
 			FTimerManager& TimerManager = GameInstance->GetTimerManager();

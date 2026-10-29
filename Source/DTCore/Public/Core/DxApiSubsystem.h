@@ -41,6 +41,7 @@ public:
 private:
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FDTCoreHttpContractTest;
+	friend class FDTCoreHttpSettingsTest;
 	TFunction<bool(const TSharedRef<IHttpRequest, ESPMode::ThreadSafe>&)> RequestProbeForTests;
 	TFunction<bool(const TCHAR*, FString&)> RuntimeOverrideReaderForTests;
 #endif
@@ -75,9 +76,6 @@ private:
 	// 재시도 대기 중인 타이머들 (Deinitialize 시 일괄 해제)
 	TArray<FTimerHandle> PendingRetryTimers;
 
-	// 연결 실패/5xx 응답에 한해 지수 백오프로 재시도
-	static constexpr int32 MaxHttpAttempts = 3;
-	static constexpr float InitialHttpRetryDelay = 1.0f;
 
 	UPROPERTY()
 	TObjectPtr<UDataTable> ApiDataTable;
