@@ -120,8 +120,14 @@ void UDxDataSubsystem::Deinitialize()
 	CachedHandlerTransactionCodeMessageMap.Reset();
 	ApiMessageMap.Empty(); TransactionCodeMessageMap.Empty();
 	FString Discarded;
-	while (ApiDataQueue.Dequeue(Discarded)) {}
-	while (WebSocketDataQueue.Dequeue(Discarded)) {}
+	while (ApiDataQueue.Dequeue(Discarded))
+	{
+		QueuedApiCount.Decrement();
+	}
+	while (WebSocketDataQueue.Dequeue(Discarded))
+	{
+		QueuedWebSocketCount.Decrement();
+	}
 
 	Super::Deinitialize();
 }
@@ -149,6 +155,7 @@ void UDxDataSubsystem::EnqueueApiData(const FString& Data)
 	{
 		return;
 	}
+	QueuedApiCount.Increment();
 	ApiDataQueue.Enqueue(Data);
 }
 
@@ -169,6 +176,7 @@ void UDxDataSubsystem::ProcessApiQueue()
        if ((FPlatformTime::Seconds() - StartTime) > TimeBudget) break;
        if (ApiDataQueue.Dequeue(Data))
        {
+		   QueuedApiCount.Decrement();
           BatchDataChunk.Add(Data);
        }
     }
@@ -207,7 +215,8 @@ void UDxDataSubsystem::ProcessApiQueue()
 	            if (!JsonParser.JsonParse(SingleData))
 	            {
 		            // 백그라운드 스레드이므로 DX_LOG(GetWorld(), ...) 대신 UE_LOG 사용
-		            UE_LOG(LogBase, Warning, TEXT("ProcessApiQueue: JSON 파싱 실패 - Payload(256자): %s"), *SingleData.Left(256));
+		            StrongThis->JsonParseFailuresCount.Increment();
+					UE_LOG(LogBase, Warning, TEXT("ProcessApiQueue: JSON 파싱 실패 - Payload(256자): %s"), *SingleData.Left(256));
 		            continue;
 	            }
 
@@ -216,13 +225,19 @@ void UDxDataSubsystem::ProcessApiQueue()
 
 	            if (!JsonParser.IsValid(MetaNode))
 	            {
-		            UE_LOG(LogBase, Warning, TEXT("ProcessApiQueue: 'meta' 노드 없음 - Payload(256자): %s"), *SingleData.Left(256));
+		            StrongThis->MissingDispatchKeysCount.Increment();
+					UE_LOG(LogBase, Warning, TEXT("ProcessApiQueue: 'meta' 노드 없음 - Payload(256자): %s"), *SingleData.Left(256));
 		            continue;
 	            }
 
 	            FString Resource = JsonParser.
 		            GetString(JsonParser.JsonParseKeyword(MetaNode, TEXT("resource")));
 	            FString Action = JsonParser.GetString(JsonParser.JsonParseKeyword(MetaNode, TEXT("action")));
+
+	            if (Resource.IsEmpty() || Action.IsEmpty())
+	            {
+		            StrongThis->MissingDispatchKeysCount.Increment();
+	            }
 
 	            // Key (Resource_Action)
 	            FString Key = FPaths::Combine(Resource, Action);
@@ -241,6 +256,10 @@ void UDxDataSubsystem::ProcessApiQueue()
 			            }
 		            }
 	            }
+	            else if (!Resource.IsEmpty() && !Action.IsEmpty())
+	            {
+		            StrongThis->RecordUnknownHandler(Key, true);
+	            }
             }
 
 	        AsyncTask(ENamedThreads::GameThread, [WeakThis, Generation, BatchResults]()
@@ -258,6 +277,7 @@ void UDxDataSubsystem::ProcessApiQueue()
 					        {
 						        // 최종 데이터 처리 실행
 						        Item.Handler->ProcessStructData(Item.Data);
+						        StrongThisGame->ProcessedApiCount.Increment();
 					        }
 				        }
 			        }
@@ -278,6 +298,7 @@ void UDxDataSubsystem::EnqueueWebSocketData(const FString& Data)
 	{
 		return;
 	}
+	QueuedWebSocketCount.Increment();
 	WebSocketDataQueue.Enqueue(Data);
 }
 
@@ -298,6 +319,7 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
        if ((FPlatformTime::Seconds() - StartTime) > TimeBudget) break;
        if (WebSocketDataQueue.Dequeue(Data))
        {
+		   QueuedWebSocketCount.Decrement();
           BatchDataChunk.Add(Data);
        }
     }
@@ -336,6 +358,7 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 				if (!JsonParser.JsonParse(SingleData))
 				{
 					// 백그라운드 스레드이므로 DX_LOG(GetWorld(), ...) 대신 UE_LOG 사용
+					StrongThis->JsonParseFailuresCount.Increment();
 					UE_LOG(LogBase, Warning, TEXT("ProcessWebSocketQueue: JSON 파싱 실패 - Payload(256자): %s"), *SingleData.Left(256));
 					continue;
 				}
@@ -345,11 +368,16 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 
 				if (!JsonParser.IsValid(MsgIdVal))
 				{
+					StrongThis->MissingDispatchKeysCount.Increment();
 					UE_LOG(LogBase, Warning, TEXT("ProcessWebSocketQueue: 'MESSAGE_ID' 노드 없음 - Payload(256자): %s"), *SingleData.Left(256));
 					continue;
 				}
 
 				FString TrCode = JsonParser.GetString(MsgIdVal);
+				if (TrCode.IsEmpty())
+				{
+					StrongThis->MissingDispatchKeysCount.Increment();
+				}
 
 				if (UTransactionCodeMessage** HandlerPtr = SharedMap->Find(TrCode))
 				{
@@ -364,6 +392,10 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 							BatchResults.Add({ Handler, ParsedData });
 						}
 					}
+				}
+				else if (!TrCode.IsEmpty())
+				{
+					StrongThis->RecordUnknownHandler(TrCode, false);
 				}
 			}
 
@@ -383,6 +415,7 @@ void UDxDataSubsystem::ProcessWebSocketQueue()
 							{
 								// 최종 데이터 처리 실행
 								Item.Handler->ProcessStructData(Item.Data);
+								StrongThisGame->ProcessedWebSocketCount.Increment();
 							}
 
 							// 카운터 증가
@@ -451,4 +484,30 @@ UTransactionCodeMessage* UDxDataSubsystem::GetOrLoadTransactionHandler(UClass* H
 	}
 
 	return NewHandler;
+}
+
+FDxDataStatistics UDxDataSubsystem::GetStatistics() const
+{
+	FDxDataStatistics Result;
+	Result.ProcessedApi = ProcessedApiCount.GetValue();
+	Result.ProcessedWebSocket = ProcessedWebSocketCount.GetValue();
+	Result.JsonParseFailures = JsonParseFailuresCount.GetValue();
+	Result.MissingDispatchKeys = MissingDispatchKeysCount.GetValue();
+	Result.UnknownHandlerKeys = UnknownHandlerKeysCount.GetValue();
+	Result.QueuedApi = QueuedApiCount.GetValue();
+	Result.QueuedWebSocket = QueuedWebSocketCount.GetValue();
+	return Result;
+}
+
+void UDxDataSubsystem::RecordUnknownHandler(const FString& Key, bool bApi)
+{
+	UnknownHandlerKeysCount.Increment();
+	FScopeLock Lock(&UnknownHandlerMutex);
+	TSet<FString>& WarnedKeys = bApi ? WarnedApiKeys : WarnedWebSocketKeys;
+	if (!WarnedKeys.Contains(Key))
+	{
+		WarnedKeys.Add(Key);
+		// 백그라운드에서는 World나 Blueprint에 접근하지 않는다.
+		UE_LOG(LogBase, Warning, TEXT("DTCore %s: 등록 핸들러 없음 [%s]"), bApi ? TEXT("API") : TEXT("WebSocket"), *Key);
+	}
 }

@@ -22,6 +22,12 @@ public:
 	ADxPlayerControllerBase();
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Player|Input")
 	EDxClickActivationPolicy ClickActivationPolicy = EDxClickActivationPolicy::DoublePress;
+	// 여러 충돌 결과 중 우선 선택할 오브젝트 채널이다.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player|Input")
+	TEnumAsByte<ECollisionChannel> PriorityTraceChannel = ECC_GameTraceChannel1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Player|Input")
+	TArray<TEnumAsByte<ECollisionChannel>> TraceObjectTypes = { ECC_WorldStatic, ECC_WorldDynamic, ECC_Pawn, ECC_PhysicsBody, ECC_GameTraceChannel1 };
+
 	virtual void BeginPlay() override;
 	UFUNCTION()
 	void SetUIMoveInput(const FVector2D& MoveInput);

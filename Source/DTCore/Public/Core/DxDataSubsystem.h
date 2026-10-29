@@ -3,9 +3,37 @@
 #include "CoreMinimal.h"
 #include "HAL/ThreadSafeBool.h"
 #include "HAL/ThreadSafeCounter.h"
+#include "HAL/ThreadSafeCounter64.h"
 #include "Async/Future.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "DxDataSubsystem.generated.h"
+
+USTRUCT(BlueprintType)
+struct DTCORE_API FDxDataStatistics
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "DxData")
+	int64 ProcessedApi = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "DxData")
+	int64 ProcessedWebSocket = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "DxData")
+	int64 JsonParseFailures = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "DxData")
+	int64 MissingDispatchKeys = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "DxData")
+	int64 UnknownHandlerKeys = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "DxData")
+	int64 QueuedApi = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "DxData")
+	int64 QueuedWebSocket = 0;
+};
 
 class UTransactionCodeMessage;
 class UApiMessage;
@@ -31,11 +59,27 @@ public:
 	UFUNCTION(Category = "DxData")
 	void EnqueueWebSocketData(const FString& Data);
 
+	// 각 항목은 원자적으로 읽으며 큐 대기 수에는 추출된 batch를 포함하지 않는다.
+	UFUNCTION(BlueprintPure, Category = "DxData")
+	FDxDataStatistics GetStatistics() const;
+
 private:
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FDTCoreWorkerShutdownTest;
+	friend class FDTCoreDataStatisticsTest;
 	friend class FDTCoreQueueWorldCleanupTest;
 #endif
+	void RecordUnknownHandler(const FString& Key, bool bApi);
+	FCriticalSection UnknownHandlerMutex;
+	TSet<FString> WarnedApiKeys;
+	TSet<FString> WarnedWebSocketKeys;
+	FThreadSafeCounter64 ProcessedApiCount;
+	FThreadSafeCounter64 ProcessedWebSocketCount;
+	FThreadSafeCounter64 JsonParseFailuresCount;
+	FThreadSafeCounter64 MissingDispatchKeysCount;
+	FThreadSafeCounter64 UnknownHandlerKeysCount;
+	FThreadSafeCounter64 QueuedApiCount;
+	FThreadSafeCounter64 QueuedWebSocketCount;
 	TFuture<void> ApiWorker;
 	TFuture<void> WebSocketWorker;
 	TAtomic<uint64> ParseGeneration{0};

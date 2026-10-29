@@ -83,6 +83,7 @@ DataTable에 정의된 API 정보를 기준으로 HTTP 요청을 수행하는 Su
 - `EApiMethod`에 따른 HTTP Method 결정
 - 직접 URL 호출용 `DxHttpCall` 제공
 - 요청 중인 HTTP Request 추적 및 종료 시 Cancel 처리
+- 설정 가능한 요청 timeout 및 연결 실패/5xx 재시도 (기본: 엔진 timeout, 3회, 초기 1초)
 - 성공 응답을 `UDxDataSubsystem::EnqueueApiData`로 전달
 
 주요 함수:
@@ -120,6 +121,8 @@ STOMP WebSocket 연결, 구독, 수신 메시지 라우팅을 담당합니다.
 - 연결 오류/종료 시 지수 백오프 재연결 (`MaxReconnectAttempts`로 최대 횟수 제한, 0 = 무제한)
 - 등록된 Topic 수신 데이터를 `UDxDataSubsystem` Queue로 전달
 - 수신 메시지를 GameThread에서 안전하게 Delegate 실행
+- `GetConnectionState`, `GetReconnectAttemptCount`, `GetLastSubscribeFailureCount` 조회 및 `OnConnectionStateChanged` 통지
+- 선택적인 구독 receipt timeout (`SubscribeReceiptTimeoutSeconds`, 기본 0 = 비활성)
 
 Topic 라우팅 기준:
 
@@ -128,9 +131,13 @@ Topic 라우팅 기준:
 | `WebSocketTopics` | `UDxDataSubsystem::EnqueueWebSocketData` |
 | `ApiTopics` | `UDxDataSubsystem::EnqueueWebSocketData` |
 
-> 참고: 현재 코드 기준으로 `ApiTopics`도 WebSocket Queue(`EnqueueWebSocketData`)로 적재됩니다.
-> 두 설정 모두 구독 대상 Topic 목록으로 사용되며, 큐 분리는 적용되지 않습니다.
-> 관련 배경은 `docs/ANALYSIS.md` 4.1절을 참고하세요.
+`ApiTopics`는 WebSocket으로 받는 Api 방식 데이터를 일반 WebSocket 데이터와 구분하기 위한 목록입니다. 두 목록 모두 WebSocket Queue로 전달되고 `MESSAGE_ID` 핸들러가 처리하며, API Queue로는 보내지 않습니다(소유자 확인). 토픽별 첫 수신 때 `ReceivedMessage: RouteType=<WebSocket|Api>, Topic=<토픽>, Bytes=<길이>` 로그를 한 번 남겨 어느 구분으로 들어왔는지 확인할 수 있습니다. 수신량이 많은 토픽에서 로그가 커지지 않도록 같은 토픽은 다시 기록하지 않습니다(Subsystem 수명 동안).
+
+상태는 `Disconnected → Connecting → Subscribing → Ready`이며 오류/종료 시 `Reconnecting`, 횟수 제한 도달 시 `GaveUp`으로 전환합니다. 상태가 실제로 바뀔 때에만 새 상태와 사유를 통지하며, 같은 재시도 포기 상태를 반복 통지하지 않습니다. 수동 Disconnect는 `Disconnected`이고 종료 중에는 상태 이벤트를 broadcast하지 않습니다. 조회·연결 제어 API는 GameThread에서 사용합니다.
+
+`Ready`는 기존 `OnConnected`와 같이 **모든 구독 완료 callback 회수**를 뜻합니다. 모든 구독 성공을 보장하지 않으며 Topic 0개이면 즉시 완료합니다. 실패 수는 현재/마지막 구독 batch의 `bSuccess=false` 및 timeout 미회수 수 합계입니다. 연결 성공 시 재시도 횟수는 기존처럼 0으로 초기화합니다.
+
+timeout을 명시적으로 켜면 batch 시작부터 지정 시간이 지나도 미회수인 receipt를 실패로 집계하고 `OnConnected`를 한 번 발생시킵니다. 이미 회수한 실패와 합산하며 늦은 원래 callback·중복 callback은 재집계하지 않습니다. 재연결·Disconnect·종료 시 generation과 타이머를 무효화합니다. 기본값 0에서는 기존처럼 callback이 없으면 계속 대기합니다.
 
 ---
 
@@ -160,6 +167,11 @@ GameThread에서 ProcessStructData 실행
 - `bApiProcessing`, `bWebSocketProcessing`으로 중복 작업 생성 방지
 - `bIsShuttingDown`으로 종료 중 비동기 작업 보호
 - Handler Cache를 사용하여 반복 생성 비용 감소
+- `GetStatistics()`로 원자 카운터 snapshot (`FDxDataStatistics`) 조회
+- 처리 완료(API/WS), JSON 파싱 실패, dispatch 필드 누락, 미등록 키, 큐 대기(API/WS) 집계
+- 미등록 키는 기존처럼 버리며 API/WS별 키 첫 1회만 백그라운드 `UE_LOG` 경고
+
+완료 수는 GameThread의 `ProcessStructData` 호출이 반환된 건수입니다. JSON 실패는 공통 JSON 파서 실패 수이며 개별 Handler의 구조체 변환 실패와 다릅니다. 누락 수는 `meta` 또는 resource/action이 비어 있거나 `MESSAGE_ID`가 없거나 빈 경우입니다. 미등록 키 수는 dispatch 필드가 채워졌지만 맵에 없는 메시지 수입니다. 큐 대기는 batch로 추출되기 전 메시지만 포함하며 각 카운터는 개별 원자 읽기입니다. 전체 snapshot의 한 시점 일관성이나 큐 처리율을 보장하지 않습니다. 기존 내부 `TotalProcessedCount`의 WS batch 결과 계수 의미는 유지합니다.
 
 중요 규칙:
 
@@ -232,6 +244,10 @@ PerformSearchByCategory(FName Category, const FString& SearchText, const FDxSear
 - 열린 Widget 목록 관리
 - Widget을 앞으로 가져오기
 - MainWidget / AddWidgetPanel 기반 UI 배치 지원
+- 중복 조회·BringToFront·hover 조회 시 화면 트리에서 빠진 관리 항목 정리
+- Main 교체 시 제거된 트리의 항목만 정리하며 닫기 후처리를 추가 호출하지 않음
+
+`SwitchUIMode`는 DataTable 순회 중 **마지막 일치 행**을 적용합니다. 이름순 정렬을 보장하지 않으므로 모드별 한 행을 권장하며, 중복 일치 시 경고를 한 번 남깁니다. Main 트리에 정적으로 등록한 Widget은 트리가 viewport에 붙어 있는 동안 유지합니다.
 
 주요 함수:
 
@@ -265,6 +281,8 @@ Runtime 로그를 파일로 저장하는 Subsystem입니다.
 ```text
 <LaunchDir>/Logs/CustomLogs
 ```
+
+`LogDirectory`가 비어 있으면 위 기본 경로를 유지합니다. 절대 경로는 그대로, 상대 경로는 `FPaths::LaunchDir()` 기준으로 해석하며 Initialize 때 고정합니다. `LogRetentionDays` 기본값은 7이며 최소 1일입니다(0 이하를 넣으면 1일로 제한해 당일 로그를 지우지 않습니다). 날짜별 `DxLog_YYYY-MM-DD.log`, 50MB 및 suffix 1~20 rotation 규칙을 유지합니다. 진단 로그 내용(HTTP 오류 본문·요청 URL·파싱 실패 payload 앞 256자·구독 실패 사유)은 기존과 같습니다.
 
 ---
 
@@ -370,9 +388,9 @@ ApplyTheme()
 | `StatusVisualizerCompBase` | 상태 시각화를 위한 Base Component |
 | `MechDriverCompBase` | 기계/장비 구동 관련 Base Component |
 | `VirtualDistanceSensorComp` | 가상 거리 센서 Component |
-| `InteractableActor` | UI 또는 상호작용 대상 Actor 기반 |
+| `InteractableActor` | UI 또는 상호작용 대상 Actor 기반. `HighlightStencilValue`(100), `ErrorStencilValue`(254) |
 | `DxPlayerBase` | 프로젝트 공통 Player 기반 |
-| `DxPlayerControllerBase` | PlayerController 공통 기반 |
+| `DxPlayerControllerBase` | PlayerController 공통 기반. `PriorityTraceChannel`, `TraceObjectTypes`로 입력 대상 설정 |
 | `DxLevelManagerBase` | Level 전환/관리 기반 |
 
 이 계층은 프로젝트별 Actor/Component가 DTCore의 공통 기능을 상속하거나 조합해서 사용할 수 있도록 만들어진 기반입니다.
@@ -387,10 +405,13 @@ ApplyTheme()
 
 | 설정 그룹 | 항목 |
 |---|---|
-| DataTable | `ApiDataTable`, `WebSocketDataTable`, `LevelDataTable`, `ShipObjectNameDataTable` |
+| DataTable | `ApiDataTable`, `WebSocketDataTable`, `LevelDataTable` |
+| Legacy 프로젝트 DataTable | `CctvUrlDataTable`, `ShipObjectNameDataTable` (이름·Config 키 유지, 내부 미사용, 신규 사용 비권장) |
 | Network/API | `BaseApiUrl`, `LocalApiUrl`, `TestApiUrl`, `ProdApiUrl` |
-| Network/WebSocket | `WebSocketUrl`, `WebSocketLogin`, `WebSocketPasscode`, `MaxReconnectAttempts` |
-| Topics | `WebSocketTopics`, `ApiTopics` |
+| HTTP 정책 | `HttpRequestTimeoutSeconds` = 0 (엔진 기본, `SetTimeout` 미호출), `HttpMaxAttempts` = 3, `HttpInitialRetryDelaySeconds` = 1.0 |
+| Network/WebSocket | `WebSocketUrl`, `WebSocketLogin`, `WebSocketPasscode`, `MaxReconnectAttempts` = 10 (0 = 무제한), `SubscribeReceiptTimeoutSeconds` = 0 (비활성) |
+| Topics | `WebSocketTopics`, `ApiTopics` (두 목록 모두 `MESSAGE_ID` 라우팅) |
+| Log | `LogDirectory` = 빈 문자열 (`LaunchDir/Logs/CustomLogs`), `LogRetentionDays` = 7 |
 | UI | `DefaultWidgetTheme` |
 | Object | `ObjectBPClasses` |
 
@@ -458,7 +479,7 @@ WebSocketPasscode=
 2. ApiDataTable / WebSocketDataTable이 정상 로드되는지
 3. WebSocket 연결 로그가 정상 출력되는지
 4. API 응답이 UDxDataSubsystem으로 전달되는지
-5. WebSocket 메시지가 Topic 설정에 따라 올바른 Queue로 들어가는지
+5. 두 Topic 목록 모두 WebSocket Queue에서 MESSAGE_ID 핸들러로 전달되는지
 6. ParseToStruct가 Background Thread에서 안전하게 동작하는지
 7. Widget 열기/닫기/자식 Widget 관리가 정상 동작하는지
 8. Game.ini override 값을 채웠을 때 접속 정보가 바뀌는지
@@ -467,6 +488,10 @@ WebSocketPasscode=
 ```
 
 ---
+
+자동화 테스트는 `Source/DTCore/Private/Tests`에 있으며 Editor에서 `Automation RunTests DTCore`로 실행합니다. 정상 실행은 fake STOMP·HTTP RequestProbe를 사용해 외부 Broker/HTTP가 필요하지 않습니다. 테스트 구현은 `WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR`, Editor 의존 모듈은 Private에만 추가합니다. CI는 없습니다. 최소 host 구성, 명령 및 결과는 [QUALITY_90.md](docs/QUALITY_90.md)를 참고하세요.
+
+실제 Broker 60분 시험은 `DTCORE_STOMP_SOAK=1`에서만 목록에 등록되는 `DTCore.Soak.Stomp60Minutes`입니다. [Tools/RunQuality90Soak.ps1](Tools/RunQuality90Soak.ps1)이 별도 Docker compose 프로젝트·포트·복사된 설정을 사용하고 10분 간격 5회 stop/start, 상태·수신·메모리를 기록한 뒤 컨테이너·네트워크·볼륨을 정리합니다. 일반 자동화 실행의 성공 수에는 이 opt-in 시험을 넣지 않습니다.
 
 ## 12. 프로젝트 독립성 규칙
 

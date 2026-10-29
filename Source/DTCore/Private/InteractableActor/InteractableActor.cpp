@@ -74,11 +74,17 @@ void AInteractableActor::HighlightActor(bool activate, const TArray<UPrimitiveCo
 {
 	// [최적화] 루프 밖에서 로그 한 번만 출력 (디버깅 필요시에만 주석 해제)
 	// UE_LOG(LogBase, Verbose, TEXT("HighlightActor: Activate=%d, MeshCount=%d"), activate, meshes.Num());
-	const int32 TargetStencilValue = isError ? 254 : 100;
 
 	for (const auto& mesh : meshes)
 	{
 		if (!mesh) continue;
+		// 정적 API는 메시 소유자의 설정을 사용하고 일반 Actor에는 기본값을 적용한다.
+		const AInteractableActor* Owner = Cast<AInteractableActor>(mesh->GetOwner());
+		if (!Owner)
+		{
+			Owner = GetDefault<AInteractableActor>();
+		}
+		const int32 TargetStencilValue = isError ? Owner->ErrorStencilValue : Owner->HighlightStencilValue;
 
 		if (mesh->bRenderCustomDepth == activate && mesh->CustomDepthStencilValue == TargetStencilValue)
 		{
@@ -102,7 +108,7 @@ void AInteractableActor::HighlightSingleMesh(bool activate, UPrimitiveComponent*
 	if (activate)
 	{
 		mesh->SetRenderCustomDepth(true);
-		mesh->SetCustomDepthStencilValue(isError ? 254 : 100);
+		mesh->SetCustomDepthStencilValue(isError ? ErrorStencilValue : HighlightStencilValue);
 	}
 	else
 	{

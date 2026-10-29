@@ -4,7 +4,7 @@
 
 ## 프로젝트 개요
 
-Unreal Engine 기반 디지털 트윈 프로젝트에서 반복 사용하는 런타임 기능(API 통신, WebSocket/STOMP 수신, 데이터 큐 처리, 객체 레지스트리, 위젯 관리, 파일 로그)을 공통화한 **재사용 플러그인**입니다. Runtime 모듈 1개(`DTCore`)로 구성되며, 소비 프로젝트의 `Plugins/DTCore`에 배치되어 함께 빌드됩니다. **플러그인 단독으로는 빌드할 수 없고, 자동화 테스트와 CI는 없습니다.**
+Unreal Engine 기반 디지털 트윈 프로젝트에서 반복 사용하는 런타임 기능(API 통신, WebSocket/STOMP 수신, 데이터 큐 처리, 객체 레지스트리, 위젯 관리, 파일 로그)을 공통화한 **재사용 플러그인**입니다. Runtime 모듈 1개(`DTCore`)로 구성되며, 소비 프로젝트의 `Plugins/DTCore`에 배치되어 함께 빌드됩니다. **플러그인 빌드에는 소비 프로젝트 또는 최소 compat host가 필요합니다. 자체 자동화 테스트는 `Source/DTCore/Private/Tests`에 있으며 CI는 없습니다.**
 
 ## 디렉터리 구조
 
@@ -59,4 +59,6 @@ HTTP/STOMP 수신 → TQueue 적재 → Tick에서 5ms 예산 내 배치 추출
 
 - 빌드: 소비 UE 프로젝트의 `Plugins/DTCore`에 배치 → "Generate Visual Studio project files" → 프로젝트 빌드. CI가 없으므로 수정 후 반드시 소비 프로젝트에서 컴파일 확인이 필요합니다.
 - 수정 후 검증 항목은 `README.md` 11절(패키징 테스트 체크리스트)을 따르세요.
-- 알려진 이슈/불일치 목록은 `docs/ANALYSIS.md` 4절에 정리되어 있습니다. 특히 Topic 라우팅(`DxWebSocketSubsystem.cpp`의 `ReceivedMessage`)은 의도 확인이 필요한 상태이므로 임의로 "수정"하지 마세요.
+- 알려진 이슈/불일치 목록은 `docs/ANALYSIS.md` 4절에 정리되어 있습니다. Topic 라우팅은 소유자 결정으로 확정되었습니다. `WebSocketTopics`와 `ApiTopics`는 모두 구독 대상 목록이며 `EnqueueWebSocketData`와 `MESSAGE_ID` 핸들러를 사용합니다. 이 동작을 유지하세요.
+
+- 자체 테스트는 Editor에서 `Automation RunTests DTCore`로 실행합니다. fake STOMP/RequestProbe 계약 시험과 opt-in 실제 Broker 60분 시험을 구분하고 skip을 성공으로 보고하지 마세요. 상세 검증은 `docs/QUALITY_90.md`를 참고하세요.

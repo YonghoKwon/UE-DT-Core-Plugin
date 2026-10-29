@@ -1,6 +1,7 @@
 ﻿#include "Core/DxLogSubsystem.h"
 
 #include "DTCore.h"
+#include "Core/DTCoreSettings.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/DateTime.h"
@@ -23,7 +24,11 @@ void UDxLogSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 
 	FCoreDelegates::OnExit.AddUObject(this, &UDxLogSubsystem::OnGameExit);
 
-	CleanupTask=Async(EAsyncExecution::ThreadPool,[this]() { DeleteOldLogs(7); });
+	const int32 RetentionDays = FMath::Max(1, GetDefault<UDTCoreSettings>()->LogRetentionDays);
+	CleanupTask = Async(EAsyncExecution::ThreadPool, [this, RetentionDays]()
+	{
+		DeleteOldLogs(RetentionDays);
+	});
 }
 
 void UDxLogSubsystem::Deinitialize()
@@ -192,7 +197,14 @@ FString UDxLogSubsystem::GetLogDirectory()
 		return CachedLogDirectory;
 	}
 
-	return FPaths::LaunchDir() / TEXT("Logs") / TEXT("CustomLogs");
+	const FString ConfiguredDirectory = GetDefault<UDTCoreSettings>()->LogDirectory;
+	if (ConfiguredDirectory.IsEmpty())
+	{
+		return FPaths::LaunchDir() / TEXT("Logs") / TEXT("CustomLogs");
+	}
+	return FPaths::IsRelative(ConfiguredDirectory)
+		? FPaths::ConvertRelativePathToFull(FPaths::LaunchDir(), ConfiguredDirectory)
+		: ConfiguredDirectory;
 }
 
 void UDxLogSubsystem::ProcessLogBuffer()

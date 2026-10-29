@@ -85,6 +85,11 @@ void UDxApiSubsystem::InternalHttpCall(FDxHttpRequestContext Context)
 
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = HttpModule->CreateRequest();
 	Request->SetURL(Context.FullUrl);
+	const float Timeout = GetDefault<UDTCoreSettings>()->HttpRequestTimeoutSeconds;
+	if (Timeout > 0.0f)
+	{
+		Request->SetTimeout(Timeout);
+	}
 	// Method 설정 (GET, POST, PUT, DELETE 등)
 	Request->SetVerb(Context.Verb);
 	// 헤더 설정
@@ -305,6 +310,9 @@ void UDxApiSubsystem::InternalOnResponseReceived(TSharedPtr<IHttpRequest, ESPMod
 	}
 
 	// 일시적 오류(연결 실패/5xx)는 지수 백오프로 재시도. 4xx는 재시도하지 않음
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+	const int32 MaxHttpAttempts = FMath::Max(1, Settings->HttpMaxAttempts);
+	const float InitialHttpRetryDelay = FMath::Max(0.001f, Settings->HttpInitialRetryDelaySeconds);
 	const bool bRetryable = bConnectionFailed || ResponseCode >= 500;
 	if (!bIsOk && bRetryable && Context.AttemptIndex + 1 < MaxHttpAttempts && HttpModule)
 	{
