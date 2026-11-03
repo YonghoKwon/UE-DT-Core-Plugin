@@ -88,6 +88,21 @@ public:
 	UFUNCTION(BlueprintPure, Category = "DxWebSocket")
 	int32 GetLastSubscribeFailureCount() const { return LastSubscribeFailureCount; }
 
+	/**
+	 * Destination으로 STOMP SEND를 보낸다. Body는 UTF-8로 인코딩한다.
+	 * 전송 연결 상태(Subscribing/Ready)가 아니면 보내지 않고 false를 반환하며 CompletionCallback도 호출하지 않는다.
+	 * CompletionCallback이 바인딩되면 Broker receipt를 요청하고 결과를 GameThread에서 전달한다.
+	 * 결과가 오기 전에 연결이 끊기거나 재연결되면 결과를 전달하지 않는다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "DxWebSocket", meta = (AutoCreateRefTerm = "Headers"))
+	bool PublishMessage(const FString& Destination, const FString& Body, const TMap<FName, FString>& Headers, const FSTOMPRequestCompleted& CompletionCallback);
+	/** PublishMessage와 같으며 Body를 변환 없이 그대로 보낸다. */
+	UFUNCTION(BlueprintCallable, Category = "DxWebSocket", meta = (AutoCreateRefTerm = "Headers"))
+	bool PublishBinaryMessage(const FString& Destination, const TArray<uint8>& Body, const TMap<FName, FString>& Headers, const FSTOMPRequestCompleted& CompletionCallback);
+	// 연결되지 않아 보내지 않은 Publish 누적 수
+	UFUNCTION(BlueprintPure, Category = "DxWebSocket")
+	int32 GetPublishDroppedCount() const { return PublishDroppedCount; }
+
 	UPROPERTY(BlueprintAssignable, Category = "DxWebSocket")
 	FDxWebSocketStateChanged OnConnectionStateChanged;
 
@@ -102,6 +117,10 @@ private:
 	void CompleteSubscriptionBatch();
 	void HandleSubscribeTimeout(uint64 Generation);
 	void ClearSubscribeTimeout();
+	bool PublishBytes(const FString& Destination, const TArray<uint8>& Body, const TMap<FName, FString>& Headers, const FSTOMPRequestCompleted& CompletionCallback);
+	int32 PublishDroppedCount = 0;
+	// 미연결 Publish 경고는 Ready가 될 때까지 한 번만 남긴다.
+	bool bPublishDropLogged = false;
 	EDxWebSocketConnectionState ConnectionState = EDxWebSocketConnectionState::Disconnected;
 	int32 LastSubscribeFailureCount = 0;
 	FTimerHandle SubscribeTimeoutHandle;
@@ -140,10 +159,7 @@ public:
 private:
 	FTimerHandle ReconnectTimerHandle; // 타이머 핸들
 	int32 RetryCount = 0;              // 현재 재시도 횟수
-
-	const float InitialRetryDelay = 1.0f; // 초기 대기 시간 (초)
-	const float MaxRetryDelay = 60.0f;    // 최대 대기 시간 (초)
-	const float BackoffMultiplier = 2.0f; // 시간 증가 배수
+	// 재연결 대기 시간은 DTCoreSettings의 Reconnect* 값을 따른다.
 
 	// 토픽별 구독 ID 관리 (Topic -> SubscriptionId)
 	TMap<FString, FString> SubscriptionIds;

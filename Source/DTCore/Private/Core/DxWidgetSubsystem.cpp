@@ -196,6 +196,42 @@ void UDxWidgetSubsystem::CloseWidgetFromWidget(UDxWidget* ParentDxWidget, uint8 
 	}
 }
 
+UDxWidget* UDxWidgetSubsystem::FindOpenWidget(AInteractableActor* OwnerActor, uint8 Flag)
+{
+	if (!OwnerActor) return nullptr;
+
+	PruneDetachedWidgets();
+	for (UDxWidget* Widget : OpenWidgets)
+	{
+		if (IsValid(Widget) && Widget->MyActor == OwnerActor && Widget->WidgetFlag == Flag)
+		{
+			return Widget;
+		}
+	}
+	return nullptr;
+}
+
+UDxWidget* UDxWidgetSubsystem::FocusOrOpenWidget(AInteractableActor* InteractableActor, FName SubTarget)
+{
+	if (!InteractableActor) return nullptr;
+
+	UDxWidget* Widget = FindOpenWidget(InteractableActor, InteractableActor->WidgetFlag);
+	if (Widget)
+	{
+		BringToFront(Widget);
+	}
+	else
+	{
+		Widget = OpenWidget(InteractableActor);
+	}
+
+	if (Widget && !SubTarget.IsNone())
+	{
+		Widget->NavigateTo(SubTarget);
+	}
+	return Widget;
+}
+
 TArray<TObjectPtr<UDxWidget>> UDxWidgetSubsystem::GetOpenWidgets()
 {
 	return this->OpenWidgets;

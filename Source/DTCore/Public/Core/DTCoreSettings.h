@@ -44,6 +44,16 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket", meta = (ClampMin = "0"))
 	int32 MaxReconnectAttempts = 10;
 
+	// 재연결 대기 시간: 첫 대기 후 Multiplier배씩 늘고 Max에서 멈춘다. 기본값은 이전 고정값(1초, 60초, 2배)과 같다.
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket", meta = (ClampMin = "0.1"))
+	float ReconnectInitialDelaySeconds = 1.0f;
+
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket", meta = (ClampMin = "0.1"))
+	float ReconnectMaxDelaySeconds = 60.0f;
+
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket", meta = (ClampMin = "1.0"))
+	float ReconnectBackoffMultiplier = 2.0f;
+
 	// 0이면 기존처럼 모든 구독 receipt callback을 기다린다.
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket", meta = (ClampMin = "0"))
 	float SubscribeReceiptTimeoutSeconds = 0.0f;

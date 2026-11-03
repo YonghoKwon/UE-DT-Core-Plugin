@@ -144,6 +144,52 @@ void UDxWidget::NotifyClosedOnce()
 	if (!bCloseStarted || bCloseNotified) return;
 	bCloseNotified=true;
 	CloseWidgetAddLogic();
+	// 닫힌 뒤 다시 열면 첫 화면부터 시작한다.
+	CurrentSubTarget = NAME_None;
+	NavigationHistory.Reset();
+}
+
+bool UDxWidget::NavigateTo(FName SubTarget, bool bRecordHistory)
+{
+	if (SubTarget.IsNone()) return false;
+	if (SubTarget == CurrentSubTarget) return true;
+
+	const FName Previous = CurrentSubTarget;
+	if (!HandleNavigateTo(SubTarget)) return false;
+
+	CurrentSubTarget = SubTarget;
+	if (bRecordHistory && !Previous.IsNone())
+	{
+		NavigationHistory.Add(Previous);
+		if (NavigationHistory.Num() > MaxNavigationHistory)
+		{
+			NavigationHistory.RemoveAt(0);
+		}
+	}
+	return true;
+}
+
+bool UDxWidget::NavigateBack()
+{
+	if (NavigationHistory.Num() == 0) return false;
+
+	const FName Previous = NavigationHistory.Last();
+	if (!HandleNavigateTo(Previous)) return false;
+
+	NavigationHistory.Pop();
+	CurrentSubTarget = Previous;
+	return true;
+}
+
+void UDxWidget::ClearNavigationHistory()
+{
+	NavigationHistory.Reset();
+}
+
+bool UDxWidget::HandleNavigateTo_Implementation(FName SubTarget)
+{
+	// 자식 클래스에서 오버라이드하여 구현 (탭/하위 화면 전환이 필요할 경우)
+	return false;
 }
 
 void UDxWidget::RetryWidget_Implementation()

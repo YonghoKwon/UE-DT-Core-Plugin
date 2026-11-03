@@ -118,11 +118,12 @@ STOMP WebSocket 연결, 구독, 수신 메시지 라우팅을 담당합니다.
 
 - `WebSocketUrl`, Login, Passcode 기반 STOMP 연결
 - 연결 성공 후 Topic 자동 구독
-- 연결 오류/종료 시 지수 백오프 재연결 (`MaxReconnectAttempts`로 최대 횟수 제한, 0 = 무제한)
+- 연결 오류/종료 시 지수 백오프 재연결 (`MaxReconnectAttempts`로 최대 횟수 제한, 0 = 무제한. 대기 시간은 `Reconnect*` 설정)
 - 등록된 Topic 수신 데이터를 `UDxDataSubsystem` Queue로 전달
 - 수신 메시지를 GameThread에서 안전하게 Delegate 실행
 - `GetConnectionState`, `GetReconnectAttemptCount`, `GetLastSubscribeFailureCount` 조회 및 `OnConnectionStateChanged` 통지
 - 선택적인 구독 receipt timeout (`SubscribeReceiptTimeoutSeconds`, 기본 0 = 비활성)
+- `PublishMessage`(UTF-8 문자열) / `PublishBinaryMessage`(바이트 그대로)로 STOMP SEND. 전송 연결 상태(`Subscribing`/`Ready`)가 아니면 보내지 않고 `false`를 반환하며 `GetPublishDroppedCount`에 누적. 완료 callback을 넘기면 Broker receipt를 요청하고, 결과 전에 연결이 바뀌면 결과를 전달하지 않음. Body는 로그에 남기지 않음
 
 Topic 라우팅 기준:
 
@@ -246,6 +247,8 @@ PerformSearchByCategory(FName Category, const FString& SearchText, const FDxSear
 - MainWidget / AddWidgetPanel 기반 UI 배치 지원
 - 중복 조회·BringToFront·hover 조회 시 화면 트리에서 빠진 관리 항목 정리
 - Main 교체 시 제거된 트리의 항목만 정리하며 닫기 후처리를 추가 호출하지 않음
+- `FindOpenWidget`/`FocusOrOpenWidget`: Actor의 위젯이 이미 열려 있으면 앞으로 가져오고 없으면 열기. `Click()` 기본 동작은 그대로이며 프로젝트가 선택적으로 사용
+- `UDxWidget::NavigateTo`/`NavigateBack`: 같은 위젯 안의 탭·하위 화면 이동과 뒤로 가기. 실제 전환은 자식 클래스의 `HandleNavigateTo`가 구현(기본은 처리 안 함). 기록은 최대 32개이며 위젯을 닫으면 초기화
 
 `SwitchUIMode`는 DataTable 순회 중 **마지막 일치 행**을 적용합니다. 이름순 정렬을 보장하지 않으므로 모드별 한 행을 권장하며, 중복 일치 시 경고를 한 번 남깁니다. Main 트리에 정적으로 등록한 Widget은 트리가 viewport에 붙어 있는 동안 유지합니다.
 
@@ -257,6 +260,8 @@ OpenWidgetFromWidget(...)
 CloseWidget(...)
 CloseWidgetFromWidget(...)
 BringToFront(...)
+FindOpenWidget(...)
+FocusOrOpenWidget(...)
 GetOpenWidgets()
 ```
 
@@ -409,7 +414,7 @@ ApplyTheme()
 | Legacy 프로젝트 DataTable | `CctvUrlDataTable`, `ShipObjectNameDataTable` (이름·Config 키 유지, 내부 미사용, 신규 사용 비권장) |
 | Network/API | `BaseApiUrl`, `LocalApiUrl`, `TestApiUrl`, `ProdApiUrl` |
 | HTTP 정책 | `HttpRequestTimeoutSeconds` = 0 (엔진 기본, `SetTimeout` 미호출), `HttpMaxAttempts` = 3, `HttpInitialRetryDelaySeconds` = 1.0 |
-| Network/WebSocket | `WebSocketUrl`, `WebSocketLogin`, `WebSocketPasscode`, `MaxReconnectAttempts` = 10 (0 = 무제한), `SubscribeReceiptTimeoutSeconds` = 0 (비활성) |
+| Network/WebSocket | `WebSocketUrl`, `WebSocketLogin`, `WebSocketPasscode`, `MaxReconnectAttempts` = 10 (0 = 무제한), `ReconnectInitialDelaySeconds` = 1.0, `ReconnectMaxDelaySeconds` = 60.0, `ReconnectBackoffMultiplier` = 2.0, `SubscribeReceiptTimeoutSeconds` = 0 (비활성) |
 | Topics | `WebSocketTopics`, `ApiTopics` (두 목록 모두 `MESSAGE_ID` 라우팅) |
 | Log | `LogDirectory` = 빈 문자열 (`LaunchDir/Logs/CustomLogs`), `LogRetentionDays` = 7 |
 | UI | `DefaultWidgetTheme` |
