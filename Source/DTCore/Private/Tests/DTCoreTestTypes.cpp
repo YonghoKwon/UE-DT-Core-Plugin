@@ -82,6 +82,66 @@ void UDxCoreTestListener::ReceivePublish(bool bSuccess, FString Error)
 #endif
 }
 
+void UDxCoreTestListener::ReceiveChannelState(FName ChannelName, EDxDataChannelState State, FString Reason)
+{
+#if WITH_DEV_AUTOMATION_TESTS
+	ChannelStates.Add(State);
+	if (!IsInGameThread())
+	{
+		++ChannelStatesOffGameThread;
+	}
+#endif
+}
+
+bool UDxCoreTestChannel::Connect()
+{
+#if WITH_DEV_AUTOMATION_TESTS
+	++ConnectCount;
+	UpdateState(EDxDataChannelState::Connected, TEXT("fixture connect"));
+	return true;
+#else
+	return false;
+#endif
+}
+
+void UDxCoreTestChannel::Disconnect()
+{
+#if WITH_DEV_AUTOMATION_TESTS
+	++DisconnectCount;
+	UpdateState(EDxDataChannelState::Disconnected, TEXT("fixture disconnect"));
+#endif
+}
+
+FString UDxCoreTestChannel::Subscribe(const FString& Destination, const FSTOMPSubscriptionEvent&, const FSTOMPRequestCompleted&)
+{
+	return Destination;
+}
+
+void UDxCoreTestChannel::Unsubscribe(const FString&, const FSTOMPRequestCompleted&)
+{
+}
+
+bool UDxCoreTestChannel::PublishBytes(const FString&, const TArray<uint8>& Body, const TMap<FName, FString>&, const FSTOMPRequestCompleted&)
+{
+#if WITH_DEV_AUTOMATION_TESTS
+	PublishedSizes.Add(Body.Num());
+	RecordPublished();
+	return true;
+#else
+	return false;
+#endif
+}
+
+TSharedPtr<IStompClient> UDxCoreTestStompChannel::CreateStompClient(const FString&)
+{
+#if WITH_DEV_AUTOMATION_TESTS
+	++CreateCount;
+	return FakeClient;
+#else
+	return nullptr;
+#endif
+}
+
 bool UDxCoreTestNavigationWidget::HandleNavigateTo_Implementation(FName SubTarget)
 {
 #if WITH_DEV_AUTOMATION_TESTS

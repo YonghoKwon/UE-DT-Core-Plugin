@@ -5,6 +5,7 @@
 #include "Api/ApiMessage.h"
 #include "WebSocket/TransactionCodeMessage.h"
 #include "UI/DxWidget.h"
+#include "Core/DxStompChannel.h"
 #include "Engine/GameInstance.h"
 #include "DTCoreTestTypes.generated.h"
 
@@ -67,6 +68,57 @@ public:
 	int32 PublishFailureCount = 0;
 	UFUNCTION()
 	void ReceivePublish(bool bSuccess, FString Error);
+	TArray<EDxDataChannelState> ChannelStates;
+	int32 ChannelStatesOffGameThread = 0;
+	UFUNCTION()
+	void ReceiveChannelState(FName ChannelName, EDxDataChannelState State, FString Reason);
+};
+
+// 보호 훅을 시험에서 부르기 위한 최소 채널
+UCLASS(Transient, NotBlueprintable, HideDropdown)
+class UDxCoreTestChannel : public UDxDataChannelBase
+{
+	GENERATED_BODY()
+public:
+	int32 ConnectCount = 0;
+	int32 DisconnectCount = 0;
+	int32 InitializedCount = 0;
+	int32 ShutdownCount = 0;
+	TArray<int32> PublishedSizes;
+	virtual bool Connect() override;
+	virtual void Disconnect() override;
+	virtual FString Subscribe(const FString& Destination, const FSTOMPSubscriptionEvent& EventCallback, const FSTOMPRequestCompleted& CompletionCallback) override;
+	virtual void Unsubscribe(const FString& SubscriptionKey, const FSTOMPRequestCompleted& CompletionCallback) override;
+	void TestUpdateState(EDxDataChannelState NewState) { UpdateState(NewState, TEXT("fixture")); }
+	void TestSetLastError(const FString& Error) { SetLastError(Error); }
+	void TestRecord(int64 Published, int64 Dropped, int64 Backpressure)
+	{
+		RecordPublished(Published);
+		RecordDropped(Dropped);
+		RecordBackpressure(Backpressure);
+	}
+	float TestReconnectDelay(int32 Attempt) const { return GetReconnectDelaySeconds(Attempt); }
+	int32 TestMaxAttempts() const { return GetMaxReconnectAttempts(); }
+	bool TestScheduleReconnect() { return ScheduleReconnect(TEXT("fixture")); }
+	void TestCancelReconnect() { CancelReconnect(); }
+	FString TestResolveUrl() const { return ResolveUrl(); }
+	TMap<FName, FString> TestResolveCredentials() const { return ResolveCredentials(); }
+protected:
+	virtual void OnChannelInitialized() override { ++InitializedCount; }
+	virtual void OnChannelShutdown() override { ++ShutdownCount; }
+	virtual bool PublishBytes(const FString& Destination, const TArray<uint8>& Body, const TMap<FName, FString>& Headers, const FSTOMPRequestCompleted& CompletionCallback) override;
+};
+
+// 엔진 STOMP 대신 시험용 연결 객체를 쓰는 채널
+UCLASS(Transient, NotBlueprintable, HideDropdown)
+class UDxCoreTestStompChannel : public UDxStompChannel
+{
+	GENERATED_BODY()
+public:
+	TSharedPtr<IStompClient> FakeClient;
+	int32 CreateCount = 0;
+protected:
+	virtual TSharedPtr<IStompClient> CreateStompClient(const FString& Url) override;
 };
 
 UCLASS(Transient, NotBlueprintable, HideDropdown)

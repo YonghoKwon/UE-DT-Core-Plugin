@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Engine/DeveloperSettings.h"
 #include "Engine/DataTable.h"
+#include "Core/DxDataChannelTypes.h"
 #include "DTCoreSettings.generated.h"
 
 UCLASS(Config=Game, meta=(DisplayName="DTCore Settings"))
@@ -53,6 +54,13 @@ public:
 
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket", meta = (ClampMin = "1.0"))
 	float ReconnectBackoffMultiplier = 2.0f;
+
+	/**
+	 * 기본 연결과 별개인 데이터 채널 목록. 비어 있으면 기본 연결만 존재한다(기존 동작).
+	 * 예) +DataChannels=(ChannelName="SensorBulk",Url="",MaxMessageBytes=33554432)
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|DataChannel")
+	TArray<FDxDataChannelSettings> DataChannels;
 
 	// 0이면 기존처럼 모든 구독 receipt callback을 기다린다.
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|WebSocket", meta = (ClampMin = "0"))
