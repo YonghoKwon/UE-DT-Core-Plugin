@@ -363,6 +363,70 @@ void UDxWebSocketSubsystem::Unsubscribe(const FString& Subscription, const FSTOM
 		);
 }
 
+bool UDxWebSocketSubsystem::PublishMessage(const FString& Destination, const FString& Body,
+	const TMap<FName, FString>& Headers, const FSTOMPRequestCompleted& CompletionCallback)
+{
+	// 엔진 IStompClient::Send(FString)과 같은 UTF-8 변환이다.
+	FTCHARToUTF8 Convert(*Body);
+	TArray<uint8> Encoded;
+	Encoded.Append(reinterpret_cast<const uint8*>(Convert.Get()), Convert.Length());
+	return PublishBytes(Destination, Encoded, Headers, CompletionCallback);
+}
+
+bool UDxWebSocketSubsystem::PublishBinaryMessage(const FString& Destination, const TArray<uint8>& Body,
+	const TMap<FName, FString>& Headers, const FSTOMPRequestCompleted& CompletionCallback)
+{
+	return PublishBytes(Destination, Body, Headers, CompletionCallback);
+}
+
+bool UDxWebSocketSubsystem::PublishBytes(const FString& Destination, const TArray<uint8>& Body,
+	const TMap<FName, FString>& Headers, const FSTOMPRequestCompleted& CompletionCallback)
+{
+	if (Destination.IsEmpty())
+	{
+		DX_LOG(GetWorld(), TEXT("Publish: Destination이 비어 있음 - Bytes: %d"), Body.Num());
+		return false;
+	}
+
+	// Body 내용은 로그에 남기지 않는다.
+	const bool bTransportConnected = ConnectionState == EDxWebSocketConnectionState::Subscribing
+		|| ConnectionState == EDxWebSocketConnectionState::Ready;
+	if (bIsShuttingDown || !bWantsConnection || !bTransportConnected || !StompClient.IsValid() || !StompClient->IsConnected())
+	{
+		++PublishDroppedCount;
+		if (!bPublishDropLogged)
+		{
+			bPublishDropLogged = true;
+			DX_LOG(GetWorld(), TEXT("Publish: 연결되지 않아 보내지 않음 - Destination: %s, Bytes: %d, State: %d (Ready 전까지 첫 1회만 기록)"),
+				*Destination, Body.Num(), static_cast<int32>(ConnectionState));
+		}
+		return false;
+	}
+
+	FStompRequestCompleted Completion;
+	if (CompletionCallback.IsBound())
+	{
+		TWeakObjectPtr<UDxWebSocketSubsystem> WeakThis(this);
+		const uint64 Generation = ConnectionGeneration;
+		Completion = FStompRequestCompleted::CreateLambda([WeakThis, Generation, Destination, CompletionCallback](bool bSuccess, const FString& Error) -> void
+		{
+			AsyncTask(ENamedThreads::GameThread, [WeakThis, Generation, Destination, CompletionCallback, bSuccess, Error]()
+			{
+				UDxWebSocketSubsystem* Self = WeakThis.Get();
+				if (!Self || Self->bIsShuttingDown || Self->ConnectionGeneration != Generation) return;
+				if (!bSuccess)
+				{
+					DX_LOG(Self->GetWorld(), TEXT("Publish receipt 실패 - Destination: %s, Error: %s"), *Destination, *Error);
+				}
+				CompletionCallback.ExecuteIfBound(bSuccess, Error);
+			});
+		});
+	}
+
+	StompClient->Send(Destination, Body, Headers, Completion);
+	return true;
+}
+
 void UDxWebSocketSubsystem::HandleOnConnected(const FString& ProtocolVersion, const FString& SessionId,
                                               const FString& ServerString)
 {
@@ -445,6 +509,10 @@ void UDxWebSocketSubsystem::SetConnectionState(EDxWebSocketConnectionState NewSt
 		return;
 	}
 	ConnectionState = NewState;
+	if (NewState == EDxWebSocketConnectionState::Ready)
+	{
+		bPublishDropLogged = false;
+	}
 	OnConnectionStateChanged.Broadcast(NewState, Reason);
 }
 
@@ -541,6 +609,10 @@ void UDxWebSocketSubsystem::TryReconnect()
 		return;
 	}
 
+	// Config 파일 값은 ClampMin을 거치지 않으므로 여기서 다시 보정한다.
+	const float InitialRetryDelay = FMath::Max(0.1f, Settings ? Settings->ReconnectInitialDelaySeconds : 1.0f);
+	const float MaxRetryDelay = FMath::Max(InitialRetryDelay, Settings ? Settings->ReconnectMaxDelaySeconds : 60.0f);
+	const float BackoffMultiplier = FMath::Max(1.0f, Settings ? Settings->ReconnectBackoffMultiplier : 2.0f);
 	float CurrentDelay = InitialRetryDelay * FMath::Pow(BackoffMultiplier, static_cast<float>(RetryCount));
 	CurrentDelay = FMath::Min(CurrentDelay, MaxRetryDelay);
 

@@ -63,6 +63,28 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "DxWidget")
 	void RemoveChildWidget(UDxWidget* InChildWidget);
 
+	/**
+	 * 같은 위젯 안의 탭/하위 화면(SubTarget)으로 이동한다. 실제 전환은 HandleNavigateTo가 하며 처리하지 않으면 false.
+	 * bRecordHistory가 true이면 이전 SubTarget을 기록해 NavigateBack으로 돌아갈 수 있다.
+	 * 첫 화면을 기록하려면 OpenWidgetAddLogic에서 NavigateTo(첫 화면, false)를 호출한다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "DxWidget|Navigation")
+	bool NavigateTo(FName SubTarget, bool bRecordHistory = true);
+	// 기록된 이전 SubTarget으로 돌아간다. 기록이 없거나 HandleNavigateTo가 처리하지 않으면 false이며 기록은 유지된다.
+	UFUNCTION(BlueprintCallable, Category = "DxWidget|Navigation")
+	bool NavigateBack();
+	UFUNCTION(BlueprintPure, Category = "DxWidget|Navigation")
+	bool CanNavigateBack() const { return NavigationHistory.Num() > 0; }
+	UFUNCTION(BlueprintPure, Category = "DxWidget|Navigation")
+	FName GetCurrentSubTarget() const { return CurrentSubTarget; }
+	UFUNCTION(BlueprintCallable, Category = "DxWidget|Navigation")
+	void ClearNavigationHistory();
+
+	// 자식 클래스에서 오버라이드하여 SubTarget 전환을 구현한다. 기본 구현은 처리하지 않는다(false).
+	UFUNCTION(BlueprintNativeEvent, Category = "DxWidget|Navigation")
+	bool HandleNavigateTo(FName SubTarget);
+	virtual bool HandleNavigateTo_Implementation(FName SubTarget);
+
 
 protected:
 	// Player) 연속 동작 시작/중지 (자식 클래스에서 사용)
@@ -127,6 +149,9 @@ public:
 private:
 	bool bCloseStarted = false;
 	bool bCloseNotified = false;
+	static constexpr int32 MaxNavigationHistory = 32;
+	FName CurrentSubTarget;
+	TArray<FName> NavigationHistory;
 public:
 
 	// 나를 호출한 부모 위젯

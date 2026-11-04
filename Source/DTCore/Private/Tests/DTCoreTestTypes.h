@@ -63,6 +63,20 @@ public:
 	void ReceiveHttp(bool bSuccess, int32 Code, const FString& Content);
 	UFUNCTION()
 	void ReceiveState(EDxWebSocketConnectionState State, FString Reason);
+	int32 PublishSuccessCount = 0;
+	int32 PublishFailureCount = 0;
+	UFUNCTION()
+	void ReceivePublish(bool bSuccess, FString Error);
+};
+
+UCLASS(Transient, NotBlueprintable, HideDropdown)
+class UDxCoreTestNavigationWidget : public UDxWidget
+{
+	GENERATED_BODY()
+public:
+	TArray<FName> HandledTargets;
+	TSet<FName> RejectedTargets;
+	virtual bool HandleNavigateTo_Implementation(FName SubTarget) override;
 };
 
 UCLASS(Transient, NotBlueprintable, HideDropdown)

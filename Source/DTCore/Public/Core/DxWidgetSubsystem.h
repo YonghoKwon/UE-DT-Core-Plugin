@@ -43,6 +43,18 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void BringToFront(UDxWidget* Widget);
 
+	// 열린 위젯 중 OwnerActor와 Flag가 같은 첫 위젯. 없으면 nullptr
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	UDxWidget* FindOpenWidget(AInteractableActor* OwnerActor, uint8 Flag);
+
+	/**
+	 * Actor의 WidgetFlag 위젯이 이미 열려 있으면 앞으로 가져오고, 없으면 OpenWidget으로 연다.
+	 * SubTarget이 있으면 반환 위젯에서 NavigateTo(SubTarget)를 호출한다.
+	 * Click()의 기존 동작은 바꾸지 않으며 프로젝트가 Click을 오버라이드해 선택적으로 사용한다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	UDxWidget* FocusOrOpenWidget(AInteractableActor* InteractableActor, FName SubTarget);
+
 	/** Blueprint에 정적으로 배치된 위젯을  OpenWidget에 수동 등록 (BringToFront 대상에 포함시키기 위함) */
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void RegisterWidget(UDxWidget* Widget);
@@ -68,6 +80,7 @@ public:
 private:
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FDTCoreWidgetPruningTest;
+	friend class FDTCoreFocusOrOpenWidgetTest;
 #endif
 	void PruneDetachedWidgets();
 	TArray<TWeakObjectPtr<UWidget>> ExternalInputBlockers;
