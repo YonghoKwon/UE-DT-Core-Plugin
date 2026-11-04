@@ -134,6 +134,18 @@ Topic 라우팅 기준:
 
 `ApiTopics`는 WebSocket으로 받는 Api 방식 데이터를 일반 WebSocket 데이터와 구분하기 위한 목록입니다. 두 목록 모두 WebSocket Queue로 전달되고 `MESSAGE_ID` 핸들러가 처리하며, API Queue로는 보내지 않습니다(소유자 확인). 토픽별 첫 수신 때 `ReceivedMessage: RouteType=<WebSocket|Api>, Topic=<토픽>, Bytes=<길이>` 로그를 한 번 남겨 어느 구분으로 들어왔는지 확인할 수 있습니다. 수신량이 많은 토픽에서 로그가 커지지 않도록 같은 토픽은 다시 기록하지 않습니다(Subsystem 수명 동안).
 
+#### 데이터 채널 (선택)
+
+기본 연결과 별개인 연결이 필요할 때 사용합니다(예: 같은 Broker라도 대용량·고빈도 메시지를 분리해 작은 실시간 메시지가 밀리지 않게 함). 채널을 등록하거나 `DataChannels`를 설정하지 않으면 기존 동작은 바뀌지 않습니다.
+
+- `UDxDataChannelBase`(추상): `Connect` / `Disconnect` / `PublishText` / `PublishBinary` / `Subscribe` / `Unsubscribe` / `GetStatus`. 파생 클래스용 보호 훅: 재연결 정책 조회(`GetReconnectDelaySeconds`, `GetMaxReconnectAttempts`, `ScheduleReconnect`), 상태 갱신(`UpdateState`, `SetLastError`), 집계(`RecordPublished` / `RecordDropped` / `RecordBackpressure`), `CheckMessageSize`, `ResolveUrl` / `ResolveCredentials`
+- 스레드 규칙: 제어 API와 `OnStateChanged` broadcast는 GameThread. `GetThreadPolicy()`가 `GameThread`인 채널은 콜백을 GameThread에서 호출하고, `Worker`인 채널은 작업 스레드에서 처리한 뒤 GameThread에는 상태·집계만 전달. 보호 훅은 어느 스레드에서 불러도 안전
+- `UDxStompChannel`: 기본 연결과 별도 인스턴스의 STOMP 연결. URL을 비우면 기본 `WebSocketUrl`과 같은 서버에 붙습니다. 구독 키는 재연결 후에도 유지되고 구독은 재연결마다 다시 요청합니다. 대용량 파생 클래스는 `CreateStompClient` / `SendFrame` / `OnFrameReceived`만 바꿔 끼웁니다
+- 등록: `RegisterChannel(Name, Channel)`(같은 이름의 `DataChannels` 설정 사용) / `RegisterChannelWithSettings` / `UnregisterChannel` / `FindChannel` / `GetChannelNames` / `GetAllChannelStatus`. None·`Default`·중복 이름·이미 등록된(또는 해제된) 채널은 거부. GameInstance 종료 시 모든 채널을 먼저 종료
+- `FindChannel("Default")`: 기존 기본 연결을 감싼 adapter(처음 호출 시 생성). 기존 공개 함수로 전달만 하며 `Subscribing`·`Ready`는 `Connected`로 보입니다. 해제·종료 시 기본 연결을 끊지 않습니다
+- 상태(`FDxDataChannelStatus`): 연결 상태, 마지막 오류, 보낸 수, 보내지 못한 수(미연결·크기 초과·종료 후), 밀림 수(파생 채널 집계), 재연결 시도 수
+- 공통 규약(`UDxDataChannelLibrary`, 새 채널 코드 전용): `MakeDestination` / `IsValidDestination`(소문자 영숫자·`-`·`_` 조각을 `.`로 연결), `MakeStandardHeaders`(`dx-schema-version`, `dx-message-id`, `dx-sent-at` UTC ISO-8601). receipt 시간 초과는 채널 설정 `ReceiptTimeoutSeconds`
+
 상태는 `Disconnected → Connecting → Subscribing → Ready`이며 오류/종료 시 `Reconnecting`, 횟수 제한 도달 시 `GaveUp`으로 전환합니다. 상태가 실제로 바뀔 때에만 새 상태와 사유를 통지하며, 같은 재시도 포기 상태를 반복 통지하지 않습니다. 수동 Disconnect는 `Disconnected`이고 종료 중에는 상태 이벤트를 broadcast하지 않습니다. 조회·연결 제어 API는 GameThread에서 사용합니다.
 
 `Ready`는 기존 `OnConnected`와 같이 **모든 구독 완료 callback 회수**를 뜻합니다. 모든 구독 성공을 보장하지 않으며 Topic 0개이면 즉시 완료합니다. 실패 수는 현재/마지막 구독 batch의 `bSuccess=false` 및 timeout 미회수 수 합계입니다. 연결 성공 시 재시도 횟수는 기존처럼 0으로 초기화합니다.
@@ -415,6 +427,7 @@ ApplyTheme()
 | Network/API | `BaseApiUrl`, `LocalApiUrl`, `TestApiUrl`, `ProdApiUrl` |
 | HTTP 정책 | `HttpRequestTimeoutSeconds` = 0 (엔진 기본, `SetTimeout` 미호출), `HttpMaxAttempts` = 3, `HttpInitialRetryDelaySeconds` = 1.0 |
 | Network/WebSocket | `WebSocketUrl`, `WebSocketLogin`, `WebSocketPasscode`, `MaxReconnectAttempts` = 10 (0 = 무제한), `ReconnectInitialDelaySeconds` = 1.0, `ReconnectMaxDelaySeconds` = 60.0, `ReconnectBackoffMultiplier` = 2.0, `SubscribeReceiptTimeoutSeconds` = 0 (비활성) |
+| Network/DataChannel | `DataChannels` = 빈 배열(기본 연결만). 항목: `ChannelName`, `ChannelClass`(빈 값 = `UDxStompChannel`), `Url`(빈 값 = 기본 URL), `UrlOverrideKey` / `LoginOverrideKey` / `PasscodeOverrideKey`(Runtime Override 키 이름, 비밀값은 설정에 두지 않음), `bUseDefaultCredentials` = true, `bAutoConnect` = true, `MaxReconnectAttempts` = -1(기본값 사용), `Reconnect*` = 0(기본값 사용), `MaxMessageBytes` = 0(제한 없음), `ReceiptTimeoutSeconds` = 0(비활성) |
 | Topics | `WebSocketTopics`, `ApiTopics` (두 목록 모두 `MESSAGE_ID` 라우팅) |
 | Log | `LogDirectory` = 빈 문자열 (`LaunchDir/Logs/CustomLogs`), `LogRetentionDays` = 7 |
 | UI | `DefaultWidgetTheme` |

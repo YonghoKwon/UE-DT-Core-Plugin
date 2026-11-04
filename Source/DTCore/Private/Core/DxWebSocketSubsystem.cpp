@@ -7,6 +7,11 @@
 #include "IStompMessage.h"
 #include "StompModule.h"
 #include "Core/DTCoreSettings.h"
+#include "Core/DxDataChannelBase.h"
+#include "Core/DxDefaultWebSocketChannel.h"
+#include "Core/DxStompChannel.h"
+
+const FName UDxWebSocketSubsystem::DefaultChannelName(TEXT("Default"));
 
 void UDxWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -49,10 +54,13 @@ void UDxWebSocketSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	}
 
 	this->ConnectWebSocket();
+	// DataChannels 설정이 비어 있으면 아무것도 하지 않는다.
+	CreateConfiguredChannels();
 }
 
 void UDxWebSocketSubsystem::Deinitialize()
 {
+	ShutdownChannels();
 	bIsShuttingDown = true;
 	ClearSubscribeTimeout();
 	ConnectionState = EDxWebSocketConnectionState::Disconnected;
@@ -629,4 +637,154 @@ void UDxWebSocketSubsystem::TryReconnect()
 		false
 	);
 	SetConnectionState(EDxWebSocketConnectionState::Reconnecting, TEXT("Reconnect scheduled"));
+}
+
+bool UDxWebSocketSubsystem::RegisterChannel(FName ChannelName, UDxDataChannelBase* Channel)
+{
+	FDxDataChannelSettings ChannelSettings;
+	if (const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>())
+	{
+		if (const FDxDataChannelSettings* Found = Settings->DataChannels.FindByPredicate([ChannelName](const FDxDataChannelSettings& Item) { return Item.ChannelName == ChannelName; }))
+		{
+			ChannelSettings = *Found;
+		}
+	}
+	ChannelSettings.ChannelName = ChannelName;
+	return RegisterChannelWithSettings(Channel, ChannelSettings);
+}
+
+bool UDxWebSocketSubsystem::RegisterChannelWithSettings(UDxDataChannelBase* Channel, const FDxDataChannelSettings& ChannelSettings)
+{
+	check(IsInGameThread());
+	const FName ChannelName = ChannelSettings.ChannelName;
+	if (bIsShuttingDown || !IsValid(Channel) || ChannelName.IsNone() || ChannelName == DefaultChannelName)
+	{
+		DX_LOG(GetWorld(), TEXT("RegisterChannel: 등록할 수 없음 - Name: %s"), *ChannelName.ToString());
+		return false;
+	}
+	if (DataChannels.Contains(ChannelName))
+	{
+		DX_LOG(GetWorld(), TEXT("RegisterChannel: 이미 등록된 이름 - Name: %s"), *ChannelName.ToString());
+		return false;
+	}
+	for (const auto& Pair : DataChannels)
+	{
+		if (Pair.Value == Channel)
+		{
+			DX_LOG(GetWorld(), TEXT("RegisterChannel: 이미 다른 이름으로 등록된 채널 - Name: %s, Existing: %s"), *ChannelName.ToString(), *Pair.Key.ToString());
+			return false;
+		}
+	}
+	if (Channel->IsShutdown() || Channel == DefaultChannelAdapter)
+	{
+		return false;
+	}
+
+	DataChannels.Add(ChannelName, Channel);
+	Channel->InitializeChannel(ChannelName, ChannelSettings, GetGameInstance());
+	DX_LOG(GetWorld(), TEXT("RegisterChannel: %s (%s)"), *ChannelName.ToString(), *Channel->GetClass()->GetName());
+	if (ChannelSettings.bAutoConnect)
+	{
+		Channel->Connect();
+	}
+	return true;
+}
+
+bool UDxWebSocketSubsystem::UnregisterChannel(FName ChannelName)
+{
+	check(IsInGameThread());
+	TObjectPtr<UDxDataChannelBase> Channel;
+	if (!DataChannels.RemoveAndCopyValue(ChannelName, Channel))
+	{
+		return false;
+	}
+	if (Channel)
+	{
+		Channel->ShutdownChannel();
+	}
+	return true;
+}
+
+UDxDataChannelBase* UDxWebSocketSubsystem::FindChannel(FName ChannelName)
+{
+	if (ChannelName == DefaultChannelName)
+	{
+		if (!DefaultChannelAdapter && !bIsShuttingDown)
+		{
+			FDxDataChannelSettings AdapterSettings;
+			AdapterSettings.ChannelName = DefaultChannelName;
+			AdapterSettings.bAutoConnect = false;
+			DefaultChannelAdapter = NewObject<UDxDefaultWebSocketChannel>(this);
+			DefaultChannelAdapter->InitializeChannel(DefaultChannelName, AdapterSettings, GetGameInstance());
+			DefaultChannelAdapter->SetOwner(this);
+		}
+		return DefaultChannelAdapter;
+	}
+	const TObjectPtr<UDxDataChannelBase>* Found = DataChannels.Find(ChannelName);
+	return Found ? Found->Get() : nullptr;
+}
+
+TArray<FName> UDxWebSocketSubsystem::GetChannelNames() const
+{
+	TArray<FName> Names;
+	DataChannels.GetKeys(Names);
+	return Names;
+}
+
+TArray<FDxDataChannelStatus> UDxWebSocketSubsystem::GetAllChannelStatus(bool bIncludeDefault)
+{
+	TArray<FDxDataChannelStatus> Result;
+	if (bIncludeDefault)
+	{
+		if (UDxDataChannelBase* Default = FindChannel(DefaultChannelName))
+		{
+			Result.Add(Default->GetStatus());
+		}
+	}
+	for (const auto& Pair : DataChannels)
+	{
+		if (Pair.Value)
+		{
+			Result.Add(Pair.Value->GetStatus());
+		}
+	}
+	return Result;
+}
+
+void UDxWebSocketSubsystem::CreateConfiguredChannels()
+{
+	const UDTCoreSettings* Settings = GetDefault<UDTCoreSettings>();
+	if (!Settings) return;
+	for (const FDxDataChannelSettings& Item : Settings->DataChannels)
+	{
+		UClass* ChannelClass = Item.ChannelClass.IsNull() ? UDxStompChannel::StaticClass() : Item.ChannelClass.LoadSynchronous();
+		if (!ChannelClass || ChannelClass->HasAnyClassFlags(CLASS_Abstract) || !ChannelClass->IsChildOf(UDxDataChannelBase::StaticClass()))
+		{
+			DX_LOG(GetWorld(), TEXT("DataChannels: 채널 클래스가 올바르지 않아 건너뜀 - Name: %s"), *Item.ChannelName.ToString());
+			continue;
+		}
+		if (Item.ChannelName.IsNone() || DataChannels.Contains(Item.ChannelName))
+		{
+			DX_LOG(GetWorld(), TEXT("DataChannels: 이름이 비었거나 중복되어 건너뜀 - Name: %s"), *Item.ChannelName.ToString());
+			continue;
+		}
+		RegisterChannelWithSettings(NewObject<UDxDataChannelBase>(this, ChannelClass), Item);
+	}
+}
+
+void UDxWebSocketSubsystem::ShutdownChannels()
+{
+	for (auto& Pair : DataChannels)
+	{
+		if (Pair.Value)
+		{
+			Pair.Value->ShutdownChannel();
+		}
+	}
+	DataChannels.Empty();
+	if (DefaultChannelAdapter)
+	{
+		DefaultChannelAdapter->ShutdownChannel();
+		DefaultChannelAdapter = nullptr;
+	}
 }

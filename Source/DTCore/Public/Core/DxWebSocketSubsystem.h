@@ -2,9 +2,12 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "Core/DxDataChannelTypes.h"
 #include "DxWebSocketSubsystem.generated.h"
 
 class IStompClient;
+class UDxDataChannelBase;
+class UDxDefaultWebSocketChannel;
 
 /** 수신 Topic의 구분. 두 값 모두 WebSocket 큐(MESSAGE_ID 핸들러)로 전달하며, 수신 로그에 구분을 남긴다. */
 UENUM()
@@ -106,13 +109,46 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "DxWebSocket")
 	FDxWebSocketStateChanged OnConnectionStateChanged;
 
+	/**
+	 * 데이터 채널(기본 연결과 별개인 연결) 등록. GameThread 전용이며 등록하지 않으면 기존 동작은 바뀌지 않는다.
+	 * DTCoreSettings.DataChannels에 같은 이름 항목이 있으면 그 설정을 쓴다. None·"Default"·중복 이름·이미 등록된 채널은 거부한다.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "DxWebSocket|DataChannel")
+	bool RegisterChannel(FName ChannelName, UDxDataChannelBase* Channel);
+	// 설정을 코드에서 넘겨 등록한다. ChannelSettings.ChannelName이 등록 이름이다.
+	bool RegisterChannelWithSettings(UDxDataChannelBase* Channel, const FDxDataChannelSettings& ChannelSettings);
+	// 채널을 종료하고 목록에서 뺀다. "Default"는 해제할 수 없다.
+	UFUNCTION(BlueprintCallable, Category = "DxWebSocket|DataChannel")
+	bool UnregisterChannel(FName ChannelName);
+	// "Default"는 기존 기본 연결의 adapter를 돌려준다(처음 호출 시 생성).
+	UFUNCTION(BlueprintCallable, Category = "DxWebSocket|DataChannel")
+	UDxDataChannelBase* FindChannel(FName ChannelName);
+	// 등록된 채널 이름(Default 제외)
+	UFUNCTION(BlueprintPure, Category = "DxWebSocket|DataChannel")
+	TArray<FName> GetChannelNames() const;
+	UFUNCTION(BlueprintCallable, Category = "DxWebSocket|DataChannel")
+	TArray<FDxDataChannelStatus> GetAllChannelStatus(bool bIncludeDefault = true);
+
+	static const FName DefaultChannelName;
+
 private:
+	friend class UDxDefaultWebSocketChannel;
+	void CreateConfiguredChannels();
+	void ShutdownChannels();
+	UPROPERTY()
+	TMap<FName, TObjectPtr<UDxDataChannelBase>> DataChannels;
+	UPROPERTY()
+	TObjectPtr<UDxDefaultWebSocketChannel> DefaultChannelAdapter;
+
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FDTCoreSubscriptionLifecycleTest;
 	friend class FDTCoreConnectionStateTest;
 	friend class FDTCoreReceiptTimeoutTest;
 	friend class FDTCorePublishTest;
 	friend class FDTCoreReconnectDelayTest;
+	friend class FDTCoreChannelOptInTest;
+	friend class FDTCoreChannelRegistryTest;
+	friend class FDTCoreStompChannelTest;
 #endif
 	void BeginConnectionAttempt();
 	void SetConnectionState(EDxWebSocketConnectionState NewState, const FString& Reason);
