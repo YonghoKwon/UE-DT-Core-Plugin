@@ -80,6 +80,7 @@ public:
 private:
 #if WITH_DEV_AUTOMATION_TESTS
 	friend class FDTCoreWidgetPruningTest;
+	friend class FDTCoreFocusOrOpenWidgetTest;
 #endif
 	void PruneDetachedWidgets();
 	TArray<TWeakObjectPtr<UWidget>> ExternalInputBlockers;

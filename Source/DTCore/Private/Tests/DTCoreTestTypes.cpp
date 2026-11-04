@@ -68,6 +68,30 @@ void UDxCoreTestListener::ReceiveState(EDxWebSocketConnectionState State, FStrin
 #endif
 }
 
+void UDxCoreTestListener::ReceivePublish(bool bSuccess, FString Error)
+{
+#if WITH_DEV_AUTOMATION_TESTS
+	if (bSuccess)
+	{
+		++PublishSuccessCount;
+	}
+	else
+	{
+		++PublishFailureCount;
+	}
+#endif
+}
+
+bool UDxCoreTestNavigationWidget::HandleNavigateTo_Implementation(FName SubTarget)
+{
+#if WITH_DEV_AUTOMATION_TESTS
+	HandledTargets.Add(SubTarget);
+	return !RejectedTargets.Contains(SubTarget);
+#else
+	return false;
+#endif
+}
+
 void UDxCoreTestCloseOrderWidget::CloseWidgetAddLogic_Implementation()
 {
 #if WITH_DEV_AUTOMATION_TESTS

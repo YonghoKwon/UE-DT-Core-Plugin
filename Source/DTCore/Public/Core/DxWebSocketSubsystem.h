@@ -111,6 +111,8 @@ private:
 	friend class FDTCoreSubscriptionLifecycleTest;
 	friend class FDTCoreConnectionStateTest;
 	friend class FDTCoreReceiptTimeoutTest;
+	friend class FDTCorePublishTest;
+	friend class FDTCoreReconnectDelayTest;
 #endif
 	void BeginConnectionAttempt();
 	void SetConnectionState(EDxWebSocketConnectionState NewState, const FString& Reason);
