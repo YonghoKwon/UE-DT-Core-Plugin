@@ -25,6 +25,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogDx, Log, All);
 // 동작 방식:
 // 1. Shipping 빌드: 화면 출력 OFF, 파일 저장 ON (로그 파일 생성)
 // 2. 그 외 (Editor/Dev): 화면 출력 ON, 파일 저장 OFF (콘솔 로그만 사용)
+//    화면 출력은 DTCoreSettings의 bShowOnScreenDebugMessages=false로 끌 수 있다.
 // ================================================================================================
 
 #if UE_BUILD_SHIPPING
@@ -61,7 +62,7 @@ UE_LOG(LogTemp, Log, Format, ##__VA_ARGS__); \
 \
 /* 2. 화면 출력 (Print String 효과) */ \
 FString Msg = FString::Printf(Format, ##__VA_ARGS__); \
-if (GEngine) \
+if (GEngine && UDxLogSubsystem::ShouldShowOnScreenDebugMessages()) \
 { \
 GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Cyan, FString::Printf(TEXT("[DT] %s"), *Msg)); \
 } \

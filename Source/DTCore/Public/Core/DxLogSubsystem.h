@@ -26,6 +26,9 @@ public:
 	 * @param LogFileName : 저장할 파일 이름 (기본값: 날짜별 자동 생성)
 	 */
 	void WriteLog(const FString& LogContent, bool bPrintToScreen = false, FString LogFileName = TEXT(""));
+
+	// DTCoreSettings의 bShowOnScreenDebugMessages 값. DX_LOG와 WriteLog의 화면 출력이 따른다.
+	static bool ShouldShowOnScreenDebugMessages();
 private:
 	void StopAndFlush();
 	bool FlushLogs();

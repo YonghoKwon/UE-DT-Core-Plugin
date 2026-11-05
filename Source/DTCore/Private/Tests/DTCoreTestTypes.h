@@ -5,6 +5,7 @@
 #include "Api/ApiMessage.h"
 #include "WebSocket/TransactionCodeMessage.h"
 #include "UI/DxWidget.h"
+#include "UI/DxWidgetFreeview.h"
 #include "Core/DxStompChannel.h"
 #include "Engine/GameInstance.h"
 #include "DTCoreTestTypes.generated.h"
@@ -139,4 +140,33 @@ public:
 	TSharedPtr<TArray<FString>> CloseTrace;
 	bool bRemovedBeforeHook = false;
 	virtual void CloseWidgetAddLogic_Implementation() override;
+};
+
+UCLASS(Transient, NotBlueprintable, HideDropdown)
+class UDxCoreTestFreeviewWidget : public UDxWidgetFreeview
+{
+	GENERATED_BODY()
+public:
+	FVector2D TestWindowSize = FVector2D(200.0, 100.0);
+	FVector2D TestBoundsSize = FVector2D(1000.0, 600.0);
+	FVector2D LastMovedPosition = FVector2D::ZeroVector;
+	int32 MovedCount = 0;
+
+	UFUNCTION()
+	void HandleMoved(UDxWidgetFreeview* Widget, FVector2D Position)
+	{
+		LastMovedPosition = Position;
+		++MovedCount;
+	}
+
+	FReply TestDown(const FGeometry& Geometry, const FPointerEvent& Event) { return NativeOnMouseButtonDown(Geometry, Event); }
+	FReply TestUp(const FGeometry& Geometry, const FPointerEvent& Event) { return NativeOnMouseButtonUp(Geometry, Event); }
+	FReply TestMove(const FGeometry& Geometry, const FPointerEvent& Event) { return NativeOnMouseMove(Geometry, Event); }
+	void TestCaptureLost() { NativeOnMouseCaptureLost(FCaptureLostEvent(0, 0)); }
+	void TestTick(const FGeometry& Geometry) { NativeTick(Geometry, 0.016f); }
+
+protected:
+	virtual FVector2D GetWindowSize() const override { return TestWindowSize; }
+	virtual FVector2D GetBoundsSize() const override { return TestBoundsSize; }
+	virtual FVector2D ScreenToBounds(FVector2D ScreenPosition) const override { return ScreenPosition; }
 };

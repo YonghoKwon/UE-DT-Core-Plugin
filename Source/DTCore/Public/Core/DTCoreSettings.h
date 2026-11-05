@@ -83,6 +83,10 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Log", meta = (ClampMin = "1"))
 	int32 LogRetentionDays = 7;
 
+	// false이면 DTCore가 화면에 디버그 메시지를 띄우지 않는다. Output Log와 파일 로그는 그대로이다. Shipping은 원래 화면에 띄우지 않는다.
+	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Log")
+	bool bShowOnScreenDebugMessages = true;
+
 	// API 기본 URL
 	UPROPERTY(Config, EditAnywhere, Category = "DTCore|Network|API")
 	FString BaseApiUrl = TEXT("");
