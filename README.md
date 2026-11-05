@@ -45,7 +45,7 @@ Source/DTCore
 
 | 영역 | 역할 |
 |---|---|
-| `Core` | 주요 Subsystem, Settings, GameMode/GameInstance, Runtime 설정 유틸리티 |
+| `Core` | 주요 Subsystem, 데이터 채널(`UDxDataChannelBase`, `UDxStompChannel`), Settings, GameMode/GameInstance, Runtime 설정 유틸리티 |
 | `Api` | API DataTable Row 구조와 API Message Handler 기반 클래스 |
 | `WebSocket` | TransactionCode 기반 WebSocket Message Handler 구조 |
 | `UI` | 공통 Widget, Widget 설정 DataAsset, Theme DataAsset |
@@ -137,6 +137,53 @@ Topic 라우팅 기준:
 #### 데이터 채널 (선택)
 
 기본 연결과 별개인 연결이 필요할 때 사용합니다(예: 같은 Broker라도 대용량·고빈도 메시지를 분리해 작은 실시간 메시지가 밀리지 않게 함). 채널을 등록하거나 `DataChannels`를 설정하지 않으면 기존 동작은 바뀌지 않습니다.
+
+**메커니즘은 DTCore, 토픽 정책은 프로젝트가 소유합니다.**
+
+| 소유 | 내용 |
+|---|---|
+| DTCore | 연결·재연결·구독 유지, 상태와 집계, 채널 등록, `DataChannels`의 연결 설정 |
+| 사용 프로젝트·플러그인 | 어떤 채널에 어떤 토픽을 쓰는지, 메시지 형식, 대용량 전송 구현, 채널별 업무 처리 |
+
+DTCore에는 특정 토픽 이름이나 장치 타입을 넣지 않습니다. `DataChannels`에도 토픽 항목은 없습니다.
+
+```text
+UDxDataChannelBase (추상)
+├─ UDxStompChannel            별도 STOMP 연결
+└─ UDxDefaultWebSocketChannel 기존 기본 연결의 adapter ("Default")
+```
+
+사용 예:
+
+```cpp
+UDxWebSocketSubsystem* WebSocket = GetGameInstance()->GetSubsystem<UDxWebSocketSubsystem>();
+UDxDataChannelBase* Channel = WebSocket->FindChannel(TEXT("telemetry"));
+if (Channel)
+{
+	Channel->PublishText(TEXT("topic.example.telemetry"), Body, {}, FSTOMPRequestCompleted());
+}
+```
+
+```ini
+[/Script/DTCore.DTCoreSettings]
++DataChannels=(ChannelName="telemetry",bAutoConnect=True)
+```
+
+`ChannelClass`가 비어 있으면 `UDxStompChannel`을 만듭니다. `Url`이 비어 있으면 기본 연결과 같은 서버에 별도 연결을 엽니다.
+
+**DTDevice와의 관계:** [UE-DT-Device-Plugin](https://github.com/YonghoKwon/UE-DT-Device-Plugin)이 이 채널을 상속해 쓰는 사용자입니다. 의존 방향은 DTDevice → DTCore이며 DTCore는 DTDevice를 참조하지 않습니다.
+
+| DTDevice 클래스 | DTCore 기반 | 역할 |
+|---|---|---|
+| `UDxDeviceSensorStompChannel` | `UDxStompChannel` | JSON·수동 binary 전송(`sensor` 채널) |
+| `UDxDeviceSensorBulkChannel` | `UDxDataChannelBase` | DTDevice의 Raw TCP worker를 쓰는 대용량 전송(`sensor-bulk` 채널) |
+| `UDxDeviceSensorChannelSubsystem` | `RegisterChannel` 사용 | 두 채널의 등록과 토픽 구독 관리 |
+| `UDeviceDataChannelSettings` | 없음(DTDevice 자체 설정) | 채널별 토픽 정책 |
+
+자세한 내용은 DTDevice의 `Docs/DataChannels.md`를 참고하세요.
+
+API 요약:
+
 
 - `UDxDataChannelBase`(추상): `Connect` / `Disconnect` / `PublishText` / `PublishBinary` / `Subscribe` / `Unsubscribe` / `GetStatus`. 파생 클래스용 보호 훅: 재연결 정책 조회(`GetReconnectDelaySeconds`, `GetMaxReconnectAttempts`, `ScheduleReconnect`), 상태 갱신(`UpdateState`, `SetLastError`), 집계(`RecordPublished` / `RecordDropped` / `RecordBackpressure`), `CheckMessageSize`, `ResolveUrl` / `ResolveCredentials`
 - 스레드 규칙: 제어 API와 `OnStateChanged` broadcast는 GameThread. `GetThreadPolicy()`가 `GameThread`인 채널은 콜백을 GameThread에서 호출하고, `Worker`인 채널은 작업 스레드에서 처리한 뒤 GameThread에는 상태·집계만 전달. 보호 훅은 어느 스레드에서 불러도 안전
@@ -383,7 +430,10 @@ OpenWidgetAddLogic()
 CloseWidgetAddLogic()
 RetryWidget()
 ApplyTheme()
+HandleNavigateTo(FName SubTarget)
 ```
+
+같은 위젯 안의 탭·하위 화면 이동은 `NavigateTo`, `NavigateBack`, `CanNavigateBack`을 사용합니다. 실제 화면 전환은 자식 클래스의 `HandleNavigateTo`가 구현합니다. 첫 화면을 기록하려면 `OpenWidgetAddLogic`에서 `NavigateTo(첫 화면, false)`를 호출합니다. 처리하지 않으면 `false`를 반환하며, `NavigateBack`이 실패해도 기록은 유지됩니다.
 
 ---
 
@@ -437,7 +487,7 @@ ApplyTheme()
 
 ## 9. Runtime Config / Game.ini Override 요약
 
-패키징 후 API/WebSocket 접속 정보를 바꾸기 위해 `DTCoreRuntimeConfig`가 `Game.ini` 후보 경로를 확인합니다.
+패키징 후 API/WebSocket 접속 정보를 바꾸기 위해 `DTCoreRuntimeConfig`가 `Game.ini`와 플랫폼별 ini 후보 경로를 확인합니다.
 
 우선순위:
 
@@ -459,6 +509,8 @@ FPaths::LaunchDir() / ../../Config/Game.ini
 FPaths::LaunchDir() / <ProjectName> / Config / Game.ini
 ```
 
+그다음 같은 네 위치의 `Config/Windows/WindowsGame.ini`(Linux는 `Config/Linux/LinuxGame.ini`)를 같은 순서로 확인합니다. 앞선 파일에 값이 있으면 그 값을 씁니다.
+
 템플릿:
 
 ```ini
@@ -472,7 +524,20 @@ WebSocketLogin=
 WebSocketPasscode=
 ```
 
-빈 값은 override로 처리하지 않습니다. 필요한 항목만 채워서 사용하면 됩니다.
+빈 값은 override로 처리하지 않습니다. 필요한 항목만 채워서 사용하면 됩니다. 데이터 채널의 `UrlOverrideKey`, `LoginOverrideKey`, `PasscodeOverrideKey`에 적은 키도 같은 경로로 읽습니다. 실행 시 첫 후보 경로에 빈 템플릿을 만들거나 빠진 키를 채웁니다.
+
+### 패키지의 설정 파일 동작
+
+패키지에서는 pak에 포함된 설정이 같은 경로의 일반 파일을 가립니다. 현재 동작은 다음과 같습니다.
+
+| 패키지 옆에서 바꾼 파일과 항목 | DTCore 반영 여부 |
+|---|---|
+| `Config/DefaultGame.ini`의 모든 항목 | 반영 안 됨. DTCore는 이 파일을 직접 읽지 않으며 pak의 값이 우선합니다 |
+| `Config/Game.ini` 등 위 후보 경로의 접속 키(템플릿 7개, 채널 override 키) | 반영됨. 단 같은 파일이 pak에 들어 있으면 그 파일이 가립니다 |
+| 위 후보 경로의 `WebSocketTopics`, `ApiTopics`, `DataChannels`, `Reconnect*`, HTTP, 로그 설정 | 반영 안 됨. 이 값은 패키징 시 설정(pak)에서 옵니다 |
+
+- `Game.ini`가 pak에 들어가지 않게 하려면 사용 프로젝트의 `DefaultGame.ini` `[Staging]`에 `+DisallowedConfigFiles=<프로젝트>/Config/Game.ini`를 추가합니다.
+- `DataChannels`나 토픽 목록을 배포 후 바꿔야 하면 사용 쪽에서 직접 읽어야 합니다. DTDevice는 채널·토픽과 일부 연결 항목을 패키지 옆 `DefaultGame.ini`와 플랫폼 ini에서 직접 읽습니다. 이 동작은 DTDevice에만 있으며 API 주소 등 DTCore의 다른 항목에는 적용되지 않습니다.
 
 ---
 
@@ -500,14 +565,16 @@ WebSocketPasscode=
 5. 두 Topic 목록 모두 WebSocket Queue에서 MESSAGE_ID 핸들러로 전달되는지
 6. ParseToStruct가 Background Thread에서 안전하게 동작하는지
 7. Widget 열기/닫기/자식 Widget 관리가 정상 동작하는지
-8. Game.ini override 값을 채웠을 때 접속 정보가 바뀌는지
+8. Game.ini override 값을 채웠을 때 접속 정보가 바뀌는지 (Game.ini가 pak에 들어가지 않았는지 포함)
 9. 빈 override 값은 기본값으로 fallback 되는지
 10. Windows/Linux 패키징에서 Game.ini 후보 경로가 정상 동작하는지
 ```
 
 ---
 
-자동화 테스트는 `Source/DTCore/Private/Tests`에 있으며 Editor에서 `Automation RunTests DTCore`로 실행합니다. 정상 실행은 fake STOMP·HTTP RequestProbe를 사용해 외부 Broker/HTTP가 필요하지 않습니다. 테스트 구현은 `WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR`, Editor 의존 모듈은 Private에만 추가합니다. CI는 없습니다. 최소 host 구성, 명령 및 결과는 [QUALITY_90.md](docs/QUALITY_90.md)를 참고하세요.
+자동화 테스트는 `Source/DTCore/Private/Tests`에 있으며 Editor에서 `Automation RunTests DTCore`로 실행합니다. 정상 실행은 fake STOMP·HTTP RequestProbe를 사용해 외부 Broker/HTTP가 필요하지 않습니다. 테스트 구현은 `WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR`, Editor 의존 모듈은 Private에만 추가합니다. CI는 없습니다. 최소 host 구성과 명령은 [QUALITY_90.md](docs/QUALITY_90.md)를 참고하세요.
+
+일반 자동화는 29개입니다(`DTCore.Contract` 11, `Quality` 7, `Functional` 4, `Channel` 7). 데이터 채널 추가 커밋 `dd7bae7`에서 compat host로 Editor·Shipping 빌드와 29개 통과(NullRHI, `DataStatistics` 1개는 의도된 경고 포함)를 확인했습니다. 이 결과는 실제 Broker 연결이나 대용량 송신을 검증한 것이 아닙니다. 사용 프로젝트에서의 확인 결과는 해당 프로젝트 문서를 따릅니다.
 
 실제 Broker 60분 시험은 `DTCORE_STOMP_SOAK=1`에서만 목록에 등록되는 `DTCore.Soak.Stomp60Minutes`입니다. [Tools/RunQuality90Soak.ps1](Tools/RunQuality90Soak.ps1)이 별도 Docker compose 프로젝트·포트·복사된 설정을 사용하고 10분 간격 5회 stop/start, 상태·수신·메모리를 기록한 뒤 컨테이너·네트워크·볼륨을 정리합니다. 일반 자동화 실행의 성공 수에는 이 opt-in 시험을 넣지 않습니다.
 
@@ -524,6 +591,7 @@ DTCore는 여러 프로젝트에서 재사용하기 위한 공통 플러그인�
 프로젝트별 Asset, Map, Widget, DataTable은 소비 프로젝트에 두기
 환경별 값은 UDTCoreSettings 또는 Game.ini에서 관리하기
 ParseToStruct 내부에서는 UObject/GameThread 전용 작업을 하지 않기
+토픽 이름, 메시지 형식, 장치별 전송 정책을 DTCore에 넣지 않기 (메커니즘은 DTCore, 토픽 정책은 프로젝트)
 ```
 
 ---
@@ -531,7 +599,21 @@ ParseToStruct 내부에서는 UObject/GameThread 전용 작업을 하지 않기
 ## 13. 주의사항
 
 - `Game.ini` 수정 후 실행 중 즉시 반영되지는 않습니다. 클라이언트 재시작을 권장합니다.
+- 패키지 옆 `Config/DefaultGame.ini`를 고쳐도 DTCore 설정은 바뀌지 않습니다. 9절의 "패키지의 설정 파일 동작"을 확인하세요.
 - Linux 패키징은 실행 방식에 따라 `LaunchDir`가 달라질 수 있으므로 실제 생성 경로를 확인해야 합니다.
 - `ParseToStruct()` 내부에서 Actor/Component/Blueprint 접근을 하면 스레드 안정성 문제가 생길 수 있습니다.
 - Public Header에 불필요한 의존성이 늘어나면 DTCore를 사용하는 프로젝트의 빌드 의존성도 커질 수 있습니다.
 - Base 클래스(`DataSyncCompBase`, `StatusVisualizerCompBase`, `MechDriverCompBase`, `DxLevelManagerBase`, `InteractableActor`)는 기본적으로 Tick이 꺼진 상태로 시작합니다(`bStartWithTickEnabled = false`). Tick이 필요한 파생 클래스/Blueprint는 `SetComponentTickEnabled(true)` 또는 `SetActorTickEnabled(true)`를 직접 호출해야 합니다.
+
+---
+
+## 14. 문서 안내
+
+| 문서 | 내용 | 상태 |
+|---|---|---|
+| `README.md` | 현재 구조와 동작 | 현재 기준 |
+| [AGENTS.md](AGENTS.md) | AI 에이전트 작업 규칙 | 현재 기준 |
+| [docs/QUALITY_90.md](docs/QUALITY_90.md) | 품질 보강 검증 기록, compat host 명령 | 해당 시점 기록 |
+| [docs/MINIMAL_MAIN_MIGRATION.md](docs/MINIMAL_MAIN_MIGRATION.md) | 최소 안정화 계약 | 해당 시점 기록 |
+| [docs/ANALYSIS.md](docs/ANALYSIS.md) | 코드 분석 보고서 | 해당 시점 기록 |
+| [docs/수정요청.md](docs/수정요청.md) | AI 수정 요청 프롬프트 | 해당 시점 기록, 일부 항목 완료 |

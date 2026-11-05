@@ -1,17 +1,17 @@
 # DTCore Plugin — AI 에이전트 가이드
 
-이 파일은 AI 코딩 에이전트(Claude Code, Copilot, Cursor 등)가 이 저장소에서 작업할 때 지켜야 할 규칙과 핵심 컨텍스트를 정리한 것입니다. 상세 아키텍처는 `README.md`, 코드 분석은 `docs/ANALYSIS.md`, 수정 요청 프롬프트는 `docs/수정요청.md`를 참고하세요.
+이 파일은 AI 코딩 에이전트(Claude Code, Copilot, Cursor 등)가 이 저장소에서 작업할 때 지켜야 할 규칙과 핵심 컨텍스트를 정리한 것입니다. 현재 구조와 동작은 `README.md`를 따릅니다. `docs/` 아래 문서는 해당 시점의 기록입니다(README 14절).
 
 ## 프로젝트 개요
 
-Unreal Engine 기반 디지털 트윈 프로젝트에서 반복 사용하는 런타임 기능(API 통신, WebSocket/STOMP 수신, 데이터 큐 처리, 객체 레지스트리, 위젯 관리, 파일 로그)을 공통화한 **재사용 플러그인**입니다. Runtime 모듈 1개(`DTCore`)로 구성되며, 소비 프로젝트의 `Plugins/DTCore`에 배치되어 함께 빌드됩니다. **플러그인 빌드에는 소비 프로젝트 또는 최소 compat host가 필요합니다. 자체 자동화 테스트는 `Source/DTCore/Private/Tests`에 있으며 CI는 없습니다.**
+Unreal Engine 기반 디지털 트윈 프로젝트에서 반복 사용하는 런타임 기능(API 통신, WebSocket/STOMP 수신·송신, 데이터 채널, 데이터 큐 처리, 객체 레지스트리, 위젯 관리, 파일 로그)을 공통화한 **재사용 플러그인**입니다. Runtime 모듈 1개(`DTCore`)로 구성되며, 소비 프로젝트의 `Plugins/DTCore`에 배치되어 함께 빌드됩니다. **플러그인 빌드에는 소비 프로젝트 또는 최소 compat host가 필요합니다. 자체 자동화 테스트는 `Source/DTCore/Private/Tests`에 있으며 CI는 없습니다.**
 
 ## 디렉터리 구조
 
 ```text
 Source/DTCore
 ├─ Public / Private
-│  ├─ Core            # Subsystem 8종, Settings, GameMode/GameInstance, RuntimeConfig
+│  ├─ Core            # Subsystem 8종, 데이터 채널, Settings, GameMode/GameInstance, RuntimeConfig
 │  ├─ Api             # FApiStruct(DataTable Row), UApiMessage 핸들러 기반 클래스
 │  ├─ WebSocket       # FTransactionCodeStruct, UTransactionCodeMessage 핸들러 기반
 │  ├─ UI              # DxWidget, WidgetConfig/Theme DataAsset
@@ -19,7 +19,8 @@ Source/DTCore
 │  ├─ Player          # DxPlayerBase, DxPlayerControllerBase
 │  ├─ Manager         # DxLevelManagerBase
 │  ├─ InteractableActor
-│  └─ Lib             # YyJsonParser + yyjson (서드파티)
+│  ├─ Lib             # YyJsonParser + yyjson (서드파티)
+│  └─ Tests           # 자동화 테스트 (Private)
 └─ DTCore.Build.cs
 Config/DefaultDTCore.ini   # CoreRedirects
 Config/DefaultGame.ini     # [DTCoreRuntimeOverride] 템플릿
@@ -32,6 +33,8 @@ Config/DefaultGame.ini     # [DTCoreRuntimeOverride] 템플릿
 3. **의존성 격리**: Public 의존 모듈은 `Core`, `CoreUObject`, `Engine`, `UMG`뿐입니다. Public 헤더에 새 모듈 의존성을 추가하지 마세요. HTTP/WebSockets/Stomp/Slate 계열은 Private에만 둡니다.
 4. **서드파티 불변**: `Source/DTCore/Private/Lib/yyjson.c`와 `Public/Lib/yyjson.h`는 서드파티(yyjson) 코드입니다. 수정하지 마세요.
 5. **Tick 정책**: Base 클래스들(`DataSyncCompBase`, `StatusVisualizerCompBase`, `MechDriverCompBase`, `DxLevelManagerBase`, `InteractableActor`)은 `bStartWithTickEnabled = false` 상태를 유지해야 합니다. Tick이 필요한 파생 클래스가 직접 켭니다.
+6. **메커니즘과 정책 분리**: 연결·재연결·구독·상태 집계 같은 메커니즘은 DTCore에 둡니다. 토픽 이름, 메시지 형식, 장치별 전송 구현 같은 정책은 사용 프로젝트나 플러그인에 둡니다. DTCore는 DTDevice를 참조하지 않습니다(의존 방향은 DTDevice → DTCore).
+7. **기본 동작 유지**: 데이터 채널은 opt-in입니다. `DataChannels`가 비어 있고 `RegisterChannel`을 부르지 않으면 기존 기본 연결의 동작이 바뀌면 안 됩니다.
 
 ## 아키텍처 핵심 (수정 시 반드시 이해할 것)
 
@@ -47,6 +50,8 @@ HTTP/STOMP 수신 → TQueue 적재 → Tick에서 5ms 예산 내 배치 추출
 - 핸들러 디스패치 키: API는 응답 JSON의 `meta.resource`/`meta.action` 조합, WebSocket은 `MESSAGE_ID`(TransactionCode). DataTable 표기와 **대소문자까지 일치**해야 매칭됩니다.
 - Subsystem은 모두 `UGameInstanceSubsystem`입니다. Subsystem 간 초기화 순서는 보장되지 않으므로 다른 Subsystem이 Initialize에서 필요하면 `Collection.InitializeDependency<T>()`를 사용하세요.
 - 에셋 로드(DataTable 등)는 CDO 생성자가 아니라 `Initialize()`에서 수행합니다 (쿠킹/시작 히치 방지).
+- 데이터 채널: 제어 API와 `OnStateChanged` broadcast는 GameThread입니다. `UpdateState`, `SetLastError`, `Record*` 보호 훅만 어느 스레드에서 불러도 됩니다. 이전 연결의 결과는 `IsCurrentGeneration`으로 거릅니다. 비밀값은 설정에 넣지 않고 Runtime Override 키 이름만 둡니다.
+- 설정: `UDTCoreSettings`는 `Config=Game`입니다. 패키지에서는 pak의 설정이 일반 파일을 가리며, 패키지 옆에서 바꿀 수 있는 값은 `DTCoreRuntimeConfig`가 읽는 접속 키뿐입니다(README 9절).
 
 ## 코딩 컨벤션
 
@@ -57,7 +62,7 @@ HTTP/STOMP 수신 → TQueue 적재 → Tick에서 5ms 예산 내 배치 추출
 
 ## 빌드 / 검증
 
-- 빌드: 소비 UE 프로젝트의 `Plugins/DTCore`에 배치 → "Generate Visual Studio project files" → 프로젝트 빌드. CI가 없으므로 수정 후 반드시 소비 프로젝트에서 컴파일 확인이 필요합니다.
+- 빌드: 소비 UE 프로젝트의 `Plugins/DTCore`에 배치 → "Generate Visual Studio project files" → 프로젝트 빌드. CI가 없으므로 수정 후 소비 프로젝트 또는 compat host에서 컴파일을 확인합니다. compat host 명령은 `docs/QUALITY_90.md`에 있습니다.
 - 수정 후 검증 항목은 `README.md` 11절(패키징 테스트 체크리스트)을 따르세요.
 - 알려진 이슈/불일치 목록은 `docs/ANALYSIS.md` 4절에 정리되어 있습니다. Topic 라우팅은 소유자 결정으로 확정되었습니다. `WebSocketTopics`와 `ApiTopics`는 모두 구독 대상 목록이며 `EnqueueWebSocketData`와 `MESSAGE_ID` 핸들러를 사용합니다. 이 동작을 유지하세요.
 
