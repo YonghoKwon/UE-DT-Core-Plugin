@@ -66,6 +66,11 @@ bool UDxLogSubsystem::FlushLogs()
 	return !bWriteFailed;
 }
 
+bool UDxLogSubsystem::ShouldShowOnScreenDebugMessages()
+{
+	return GetDefault<UDTCoreSettings>()->bShowOnScreenDebugMessages;
+}
+
 void UDxLogSubsystem::WriteLog(const FString& LogContent, bool bPrintToScreen, FString LogFileName)
 {
 	if (bIsShuttingDown) return;
@@ -77,7 +82,7 @@ void UDxLogSubsystem::WriteLog(const FString& LogContent, bool bPrintToScreen, F
 	if (bPrintToScreen)
 	{
 #if !UE_BUILD_SHIPPING
-		if (GEngine)
+		if (GEngine && ShouldShowOnScreenDebugMessages())
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, LogContent);
 		}

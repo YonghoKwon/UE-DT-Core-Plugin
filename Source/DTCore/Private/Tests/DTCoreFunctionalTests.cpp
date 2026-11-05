@@ -12,6 +12,11 @@
 #include "Engine/GameViewportClient.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/CanvasPanel.h"
+#include "Components/CanvasPanelSlot.h"
+#include "DTCore.h"
+#include "InputCoreTypes.h"
+#include "Input/Events.h"
+#include "Layout/Geometry.h"
 #include "InteractableActor/InteractableActor.h"
 #include "IStompClient.h"
 #include "TimerManager.h"
@@ -343,6 +348,131 @@ bool FDTCoreFocusOrOpenWidgetTest::RunTest(const FString&)
 
 	Opened->RemoveFromParent();
 	TestNull(TEXT("detached widget not found"), Widgets->FindOpenWidget(Actor, Actor->WidgetFlag));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDTCoreOnScreenDebugToggleTest, "DTCore.Functional.OnScreenDebugToggle",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDTCoreOnScreenDebugToggleTest::RunTest(const FString&)
+{
+	// UEngine의 화면 메시지 목록은 비공개라 출력 자체는 관찰하지 못한다. 설정 값 전달과 매크로 실행만 확인한다.
+	UDTCoreSettings* Settings = GetMutableDefault<UDTCoreSettings>();
+	const bool bSavedSetting = Settings->bShowOnScreenDebugMessages;
+	ON_SCOPE_EXIT
+	{
+		Settings->bShowOnScreenDebugMessages = bSavedSetting;
+	};
+
+	Settings->bShowOnScreenDebugMessages = true;
+	TestTrue(TEXT("helper follows enabled setting"), UDxLogSubsystem::ShouldShowOnScreenDebugMessages());
+	DX_LOG(nullptr, TEXT("DTCore on-screen toggle test: on"));
+
+	Settings->bShowOnScreenDebugMessages = false;
+	TestFalse(TEXT("helper follows disabled setting"), UDxLogSubsystem::ShouldShowOnScreenDebugMessages());
+	DX_LOG(nullptr, TEXT("DTCore on-screen toggle test: off"));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDTCoreFreeviewWindowTest, "DTCore.Functional.FreeviewWindow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+bool FDTCoreFreeviewWindowTest::RunTest(const FString&)
+{
+	const FVector2D Window(200.0, 100.0);
+	const FVector2D Bounds(1000.0, 600.0);
+	TestEqual(TEXT("inside stays"), UDxWidgetFreeview::ClampWindowPosition(FVector2D(10.0, 20.0), Window, Bounds), FVector2D(10.0, 20.0));
+	TestEqual(TEXT("left top clamps"), UDxWidgetFreeview::ClampWindowPosition(FVector2D(-5.0, -5.0), Window, Bounds, 4.0f), FVector2D(4.0, 4.0));
+	TestEqual(TEXT("right bottom clamps"), UDxWidgetFreeview::ClampWindowPosition(FVector2D(5000.0, 5000.0), Window, Bounds, 4.0f), FVector2D(796.0, 496.0));
+	TestEqual(TEXT("oversized keeps title visible"), UDxWidgetFreeview::ClampWindowPosition(FVector2D(50.0, 50.0), FVector2D(2000.0, 2000.0), Bounds), FVector2D::ZeroVector);
+
+	TStrongObjectPtr<UDxCoreTestFreeviewWidget> Unparented(NewObject<UDxCoreTestFreeviewWidget>());
+	TestFalse(TEXT("no parent cannot move"), Unparented->SetWindowPosition(FVector2D(1.0, 1.0)));
+
+	TStrongObjectPtr<UWidgetTree> Tree(NewObject<UWidgetTree>());
+	UCanvasPanel* Canvas = Tree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
+	TStrongObjectPtr<UDxCoreTestFreeviewWidget> Widget(NewObject<UDxCoreTestFreeviewWidget>());
+	UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Canvas->AddChild(Widget.Get()));
+	if (!TestNotNull(TEXT("canvas slot"), CanvasSlot)) return false;
+	CanvasSlot->SetAnchors(FAnchors(0.0f));
+	CanvasSlot->SetAlignment(FVector2D::ZeroVector);
+
+	TestTrue(TEXT("set position"), Widget->SetWindowPosition(FVector2D(100.0, 50.0)));
+	TestEqual(TEXT("window position"), Widget->GetWindowPosition(), FVector2D(100.0, 50.0));
+	TestEqual(TEXT("slot position"), CanvasSlot->GetPosition(), FVector2D(100.0, 50.0));
+	TestTrue(TEXT("set outside"), Widget->SetWindowPosition(FVector2D(5000.0, -10.0)));
+	TestEqual(TEXT("set position clamps"), Widget->GetWindowPosition(), FVector2D(800.0, 0.0));
+
+	// 앵커·정렬이 있어도 위치는 창 왼쪽 위 기준이다.
+	CanvasSlot->SetAnchors(FAnchors(0.5f));
+	CanvasSlot->SetAlignment(FVector2D(0.5, 0.5));
+	TestTrue(TEXT("anchored position"), Widget->SetWindowPosition(FVector2D(100.0, 50.0)));
+	TestEqual(TEXT("anchored slot offset"), CanvasSlot->GetPosition(), FVector2D(100.0 - 500.0 + 100.0, 50.0 - 300.0 + 50.0));
+	TestEqual(TEXT("anchored window position"), Widget->GetWindowPosition(), FVector2D(100.0, 50.0));
+
+	CanvasSlot->SetAnchors(FAnchors(0.0f, 0.0f, 1.0f, 1.0f));
+	TestFalse(TEXT("stretched anchors cannot move"), Widget->SetWindowPosition(FVector2D(1.0, 1.0)));
+	CanvasSlot->SetAnchors(FAnchors(0.0f));
+	CanvasSlot->SetAlignment(FVector2D::ZeroVector);
+	TestTrue(TEXT("reset position"), Widget->SetWindowPosition(FVector2D(100.0, 50.0)));
+
+	// GetCachedWidget은 약한 참조이므로 테스트 동안 Slate 위젯을 붙잡아 둔다.
+	const TSharedRef<SWidget> HeldSlateWidget = Widget->TakeWidget();
+	Widget->OnWindowMoved.AddDynamic(Widget.Get(), &UDxCoreTestFreeviewWidget::HandleMoved);
+	const FGeometry Geometry = FGeometry::MakeRoot(FVector2f(200.0f, 100.0f), FSlateLayoutTransform(FVector2f(100.0f, 50.0f)));
+	const TSet<FKey> Pressed{EKeys::LeftMouseButton};
+	const TSet<FKey> Released;
+	auto MakeEvent = [](const FVector2D& Position, const TSet<FKey>& Buttons, const FKey& Effecting)
+	{
+		return FPointerEvent(0, Position, Position, Buttons, Effecting, 0.0f, FModifierKeysState());
+	};
+
+	Widget->TestDown(Geometry, MakeEvent(FVector2D(150.0, 120.0), Pressed, EKeys::LeftMouseButton));
+	TestFalse(TEXT("body press does not drag"), Widget->IsDraggingWindow());
+	Widget->TestDown(Geometry, MakeEvent(FVector2D(150.0, 60.0), Pressed, EKeys::RightMouseButton));
+	TestFalse(TEXT("right press does not drag"), Widget->IsDraggingWindow());
+
+	Widget->bMovable = false;
+	Widget->TestDown(Geometry, MakeEvent(FVector2D(150.0, 60.0), Pressed, EKeys::LeftMouseButton));
+	TestFalse(TEXT("not movable does not drag"), Widget->IsDraggingWindow());
+	Widget->bMovable = true;
+
+	const FReply DownReply = Widget->TestDown(Geometry, MakeEvent(FVector2D(150.0, 60.0), Pressed, EKeys::LeftMouseButton));
+	TestTrue(TEXT("title press drags"), Widget->IsDraggingWindow());
+	TestTrue(TEXT("title press captures mouse"), DownReply.GetMouseCaptor().IsValid());
+	TestTrue(TEXT("title press sets focus"), DownReply.GetUserFocusRecepient().IsValid());
+
+	Widget->TestMove(Geometry, MakeEvent(FVector2D(250.0, 160.0), Pressed, EKeys::Invalid));
+	TestEqual(TEXT("drag keeps grab offset"), Widget->GetWindowPosition(), FVector2D(200.0, 150.0));
+	Widget->TestMove(Geometry, MakeEvent(FVector2D(9000.0, 9000.0), Pressed, EKeys::Invalid));
+	TestEqual(TEXT("drag clamps"), Widget->GetWindowPosition(), FVector2D(800.0, 500.0));
+	TestEqual(TEXT("no notification during drag"), Widget->MovedCount, 0);
+
+	const FReply UpReply = Widget->TestUp(Geometry, MakeEvent(FVector2D(9000.0, 9000.0), Released, EKeys::LeftMouseButton));
+	TestFalse(TEXT("release ends drag"), Widget->IsDraggingWindow());
+	TestTrue(TEXT("release frees mouse"), UpReply.ShouldReleaseMouse());
+	TestEqual(TEXT("moved notified once"), Widget->MovedCount, 1);
+	TestEqual(TEXT("moved position"), Widget->LastMovedPosition, FVector2D(800.0, 500.0));
+
+	const FVector2D ReleasedPosition = Widget->GetWindowPosition();
+	Widget->TestMove(Geometry, MakeEvent(FVector2D(10.0, 10.0), Pressed, EKeys::Invalid));
+	TestEqual(TEXT("move without drag does nothing"), Widget->GetWindowPosition(), ReleasedPosition);
+
+	Widget->TestDown(Geometry, MakeEvent(FVector2D(150.0, 60.0), Pressed, EKeys::LeftMouseButton));
+	Widget->TestCaptureLost();
+	TestFalse(TEXT("capture lost ends drag"), Widget->IsDraggingWindow());
+	TestEqual(TEXT("unmoved drag is not notified"), Widget->MovedCount, 1);
+
+	Widget->TestDown(Geometry, MakeEvent(FVector2D(150.0, 60.0), Pressed, EKeys::LeftMouseButton));
+	const FReply MissedUp = Widget->TestMove(Geometry, MakeEvent(FVector2D(150.0, 60.0), Released, EKeys::Invalid));
+	TestFalse(TEXT("move without button ends drag"), Widget->IsDraggingWindow());
+	TestTrue(TEXT("missed release frees mouse"), MissedUp.ShouldReleaseMouse());
+
+	Widget->TestBoundsSize = FVector2D(500.0, 300.0);
+	Widget->TestTick(Geometry);
+	TestEqual(TEXT("smaller bounds clamp again"), Widget->GetWindowPosition(), FVector2D(300.0, 200.0));
+	Widget->bClampToBounds = false;
+	Widget->TestBoundsSize = FVector2D(100.0, 100.0);
+	Widget->TestTick(Geometry);
+	TestEqual(TEXT("clamp off keeps slot position"), CanvasSlot->GetPosition(), FVector2D(300.0, 200.0));
 	return true;
 }
 

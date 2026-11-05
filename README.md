@@ -348,6 +348,8 @@ Runtime 로그를 파일로 저장하는 Subsystem입니다.
 
 `LogDirectory`가 비어 있으면 위 기본 경로를 유지합니다. 절대 경로는 그대로, 상대 경로는 `FPaths::LaunchDir()` 기준으로 해석하며 Initialize 때 고정합니다. `LogRetentionDays` 기본값은 7이며 최소 1일입니다(0 이하를 넣으면 1일로 제한해 당일 로그를 지우지 않습니다). 날짜별 `DxLog_YYYY-MM-DD.log`, 50MB 및 suffix 1~20 rotation 규칙을 유지합니다. 진단 로그 내용(HTTP 오류 본문·요청 URL·파싱 실패 payload 앞 256자·구독 실패 사유)은 기존과 같습니다.
 
+`bShowOnScreenDebugMessages` 기본값은 `true`입니다. `false`로 두면 `DX_LOG`와 `WriteLog(..., true)`의 화면 출력만 꺼지고 Output Log와 파일 로그는 그대로입니다. Shipping은 원래 화면에 띄우지 않습니다. DTCore 밖에서 직접 호출한 `AddOnScreenDebugMessage`와 엔진 자체 메시지는 이 설정의 대상이 아닙니다.
+
 ---
 
 ### 4.8 `UDxProcessSubsystem`
@@ -435,6 +437,16 @@ HandleNavigateTo(FName SubTarget)
 
 같은 위젯 안의 탭·하위 화면 이동은 `NavigateTo`, `NavigateBack`, `CanNavigateBack`을 사용합니다. 실제 화면 전환은 자식 클래스의 `HandleNavigateTo`가 구현합니다. 첫 화면을 기록하려면 `OpenWidgetAddLogic`에서 `NavigateTo(첫 화면, false)`를 호출합니다. 처리하지 않으면 `false`를 반환하며, `NavigateBack`이 실패해도 기록은 유지됩니다.
 
+#### `UDxWidgetFreeview` (선택)
+
+떠 있는 패널이 상속해서 쓰는 `UDxWidget` 파생 클래스입니다. 상속한 위젯만 이동 기능을 쓰며 `UDxWidget` 동작은 바뀌지 않습니다. `EPlayerViewType::FreeView`(카메라 시점)와는 무관합니다.
+
+- 이동: 제목 영역을 왼쪽 버튼으로 드래그합니다. 제목 영역은 `TitleDragArea`(선택 바인딩), `Img_TitleBg`, 위쪽 `TitleBarHeight`(기본 38) 순으로 정합니다. `bMovable`로 끕니다.
+- 제한: `bClampToBounds`(기본 켜짐)이면 부모 영역 안에 머물고, 영역이나 창 크기가 바뀌면 다시 제한합니다. 창이 영역보다 크면 왼쪽 위에 맞춥니다. 여백은 `BoundsMargin`입니다.
+- 닫기: `UDxWidget`의 `Btn_Close`와 `CloseWidget`을 그대로 씁니다.
+- 위치: `SetWindowPosition`, `GetWindowPosition`은 부모 영역 왼쪽 위 기준의 창 왼쪽 위 좌표입니다. 부모는 `UCanvasPanel`(앵커가 늘어나지 않는 형태) 또는 Viewport여야 합니다. Viewport에서 화면 전체를 채우는 상태이면 처음 옮길 때 내용 크기로 줄입니다.
+- 저장: 위치를 저장하지 않습니다. 드래그가 끝나 위치가 바뀌면 `OnWindowMoved`가 호출되므로 필요하면 프로젝트에서 저장합니다.
+
 ---
 
 ### 6.2 Widget Config / Theme
@@ -479,7 +491,7 @@ HandleNavigateTo(FName SubTarget)
 | Network/WebSocket | `WebSocketUrl`, `WebSocketLogin`, `WebSocketPasscode`, `MaxReconnectAttempts` = 10 (0 = 무제한), `ReconnectInitialDelaySeconds` = 1.0, `ReconnectMaxDelaySeconds` = 60.0, `ReconnectBackoffMultiplier` = 2.0, `SubscribeReceiptTimeoutSeconds` = 0 (비활성) |
 | Network/DataChannel | `DataChannels` = 빈 배열(기본 연결만). 항목: `ChannelName`, `ChannelClass`(빈 값 = `UDxStompChannel`), `Url`(빈 값 = 기본 URL), `UrlOverrideKey` / `LoginOverrideKey` / `PasscodeOverrideKey`(Runtime Override 키 이름, 비밀값은 설정에 두지 않음), `bUseDefaultCredentials` = true, `bAutoConnect` = true, `MaxReconnectAttempts` = -1(기본값 사용), `Reconnect*` = 0(기본값 사용), `MaxMessageBytes` = 0(제한 없음), `ReceiptTimeoutSeconds` = 0(비활성) |
 | Topics | `WebSocketTopics`, `ApiTopics` (두 목록 모두 `MESSAGE_ID` 라우팅) |
-| Log | `LogDirectory` = 빈 문자열 (`LaunchDir/Logs/CustomLogs`), `LogRetentionDays` = 7 |
+| Log | `LogDirectory` = 빈 문자열 (`LaunchDir/Logs/CustomLogs`), `LogRetentionDays` = 7, `bShowOnScreenDebugMessages` = true |
 | UI | `DefaultWidgetTheme` |
 | Object | `ObjectBPClasses` |
 
@@ -574,7 +586,7 @@ WebSocketPasscode=
 
 자동화 테스트는 `Source/DTCore/Private/Tests`에 있으며 Editor에서 `Automation RunTests DTCore`로 실행합니다. 정상 실행은 fake STOMP·HTTP RequestProbe를 사용해 외부 Broker/HTTP가 필요하지 않습니다. 테스트 구현은 `WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR`, Editor 의존 모듈은 Private에만 추가합니다. CI는 없습니다. 최소 host 구성과 명령은 [QUALITY_90.md](docs/QUALITY_90.md)를 참고하세요.
 
-일반 자동화는 29개입니다(`DTCore.Contract` 11, `Quality` 7, `Functional` 4, `Channel` 7). 데이터 채널 추가 커밋 `dd7bae7`에서 compat host로 Editor·Shipping 빌드와 29개 통과(NullRHI, `DataStatistics` 1개는 의도된 경고 포함)를 확인했습니다. 이 결과는 실제 Broker 연결이나 대용량 송신을 검증한 것이 아닙니다. 사용 프로젝트에서의 확인 결과는 해당 프로젝트 문서를 따릅니다.
+일반 자동화는 31개입니다(`DTCore.Contract` 11, `Quality` 7, `Functional` 6, `Channel` 7). `UDxWidgetFreeview`와 화면 메시지 설정을 추가할 때 compat host로 Editor·Shipping 빌드와 31개 통과(NullRHI, `DataStatistics` 1개는 의도된 경고 포함)를 확인했습니다. Freeview 드래그는 이벤트 함수를 직접 호출한 시험이고, 화면 메시지는 설정 값 전달까지만 시험합니다. 이 결과는 실제 Broker 연결이나 대용량 송신을 검증한 것이 아닙니다. 사용 프로젝트에서의 확인 결과는 해당 프로젝트 문서를 따릅니다.
 
 실제 Broker 60분 시험은 `DTCORE_STOMP_SOAK=1`에서만 목록에 등록되는 `DTCore.Soak.Stomp60Minutes`입니다. [Tools/RunQuality90Soak.ps1](Tools/RunQuality90Soak.ps1)이 별도 Docker compose 프로젝트·포트·복사된 설정을 사용하고 10분 간격 5회 stop/start, 상태·수신·메모리를 기록한 뒤 컨테이너·네트워크·볼륨을 정리합니다. 일반 자동화 실행의 성공 수에는 이 opt-in 시험을 넣지 않습니다.
 
